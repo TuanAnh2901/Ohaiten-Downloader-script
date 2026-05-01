@@ -9,7 +9,6 @@ interface ConfigData {
     preferredSource: string
     autoDownload: boolean
     downloadDelay: number
-    chunksPerVideo: number
     concurrentVideos: number
     saveMetadata: boolean
     debug: boolean
@@ -24,9 +23,8 @@ const DEFAULTS: ConfigData = {
     aria2Secret: '',
     preferredSource: 'Snowcore',
     autoDownload: false,
-    downloadDelay: 2000,
-    chunksPerVideo: 8,
-    concurrentVideos: 1,
+    downloadDelay: 1000,
+    concurrentVideos: 3,
     saveMetadata: false,
     debug: false,
     customCookies: '',

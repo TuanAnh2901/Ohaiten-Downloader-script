@@ -8,6 +8,7 @@ interface DownloadOptions {
     onProgress?: (progress: number) => void
     onComplete?: () => void
     onError?: (error: Error) => void
+    bulk?: boolean
 }
 
 function getCookieHeader(): string {
@@ -22,84 +23,6 @@ function getHeaders(referer?: string): Record<string, string> {
     const cookies = getCookieHeader()
     if (cookies) headers['Cookie'] = cookies
     return headers
-}
-
-async function downloadChunked(options: DownloadOptions, chunks: number): Promise<void> {
-    const { url, filename, referer, onProgress, onComplete, onError } = options
-
-    return new Promise<void>((resolve, reject) => {
-        try {
-            const headers = getHeaders(referer)
-
-            GM_xmlhttpRequest({
-                method: 'HEAD',
-                url,
-                headers,
-                onload: (headResponse) => {
-                    if (headResponse.status >= 400) {
-                        onError?.(new Error(`HEAD failed: ${headResponse.status}`))
-                        reject(new Error(`HEAD failed: ${headResponse.status}`))
-                        return
-                    }
-
-                    const contentLength = headResponse.responseHeaders
-                        ? parseContentLength(headResponse.responseHeaders)
-                        : 0
-
-                    if (contentLength === 0) {
-                        doSingleDownload(options, headers, resolve, reject)
-                        return
-                    }
-
-                    const chunkSize = Math.ceil(contentLength / chunks)
-                    const chunkBlobs: Array<{ index: number; blob: Blob }> = []
-                    let totalDownloaded = 0
-
-                    for (let i = 0; i < chunks; i++) {
-                        const start = i * chunkSize
-                        const end = Math.min(start + chunkSize - 1, contentLength - 1)
-
-                        GM_xmlhttpRequest({
-                            method: 'GET',
-                            url,
-                            headers: { ...headers, 'Range': `bytes=${start}-${end}` },
-                            responseType: 'blob',
-                            onload: (response) => {
-                                if (response.status >= 200 && response.status < 300) {
-                                    chunkBlobs.push({ index: i, blob: response.response as Blob })
-                                    totalDownloaded += (response.response as Blob).size
-                                    onProgress?.(Math.min((totalDownloaded / contentLength) * 100, 99))
-
-                                    if (chunkBlobs.length === chunks) {
-                                        chunkBlobs.sort((a, b) => a.index - b.index)
-                                        const finalBlob = new Blob(chunkBlobs.map(c => c.blob))
-                                        triggerDownload(finalBlob, filename)
-                                        onComplete?.()
-                                        resolve()
-                                    }
-                                } else {
-                                    const error = new Error(`Chunk ${i} failed: ${response.status}`)
-                                    onError?.(error)
-                                    reject(error)
-                                }
-                            },
-                            onerror: (err) => {
-                                const error = new Error(`Chunk ${i} error`)
-                                onError?.(error)
-                                reject(error)
-                            },
-                        })
-                    }
-                },
-                onerror: () => {
-                    doSingleDownload(options, headers, resolve, reject)
-                },
-            })
-        } catch (error) {
-            onError?.(error instanceof Error ? error : new Error(String(error)))
-            reject(error)
-        }
-    })
 }
 
 function doSingleDownload(
@@ -156,11 +79,6 @@ function triggerDownload(blob: Blob, filename: string): void {
     setTimeout(() => URL.revokeObjectURL(blobUrl), 1000)
 }
 
-function parseContentLength(headers: string): number {
-    const match = headers.match(/content-length:\s*(\d+)/i)
-    return match ? parseInt(match[1], 10) : 0
-}
-
 export function getDownloadUrl(url: string): string {
     const cookies = getCookieHeader()
     const params = new URLSearchParams()
@@ -184,9 +102,6 @@ window.location.href="${url}";
 }
 
 export async function browserDownload(options: DownloadOptions): Promise<void> {
-    const chunks = Math.min(Math.max(config.get('chunksPerVideo'), 1), 20)
-    if (chunks > 1) return downloadChunked(options, chunks)
-
     return new Promise<void>((resolve, reject) => {
         try {
             doSingleDownload(options, getHeaders(options.referer), resolve, reject)
@@ -262,18 +177,49 @@ export async function aria2Download(options: DownloadOptions): Promise<void> {
     }
 }
 
+export async function directDownload(options: DownloadOptions): Promise<void> {
+    const { url, bulk, onComplete } = options
+
+    if (bulk) {
+        await delay(config.get('downloadDelay'))
+    }
+
+    GM_openInTab(url, { active: !bulk, insert: true, setParent: !bulk })
+    onComplete?.()
+}
+
 export async function othersDownload(options: DownloadOptions): Promise<void> {
     const { url } = options
-    GM_openInTab(url, { active: true, insert: true, setParent: true })
+    const cookies = getCookieHeader()
+    const html = `<!DOCTYPE html>
+<html><head><title>Redirecting...</title></head>
+<body>
+<script>
+document.cookie="${cookies}; path=/; domain=.ohentai.org";
+setTimeout(() => { window.location.href = "${url}"; }, 500);
+</script>
+<p>Redirecting to download... If nothing happens, <a href="${url}">click here</a>.</p>
+</body></html>`
+    const dataUri = `data:text/html,${encodeURIComponent(html)}`
+    GM_openInTab(dataUri, { active: true, insert: true, setParent: true })
 }
 
 export async function download(options: DownloadOptions): Promise<void> {
     const method = config.get('downloadMethod')
-    switch (method) {
-        case 'browser': return browserDownload(options)
-        case 'gm_download': return gmDownload(options)
-        case 'aria2': return aria2Download(options)
-        case 'others': return othersDownload(options)
-        default: return browserDownload(options)
+    try {
+        switch (method) {
+            case 'browser': return browserDownload(options)
+            case 'gm_download': return gmDownload(options)
+            case 'aria2': return aria2Download(options)
+            case 'direct': return directDownload(options)
+            case 'others': return othersDownload(options)
+            default: return browserDownload(options)
+        }
+    } catch (error) {
+        if (method !== 'browser' && method !== 'direct') {
+            options.onError?.(new Error(method + ' failed, fallback to browser: ' + (error instanceof Error ? error.message : String(error))))
+            return browserDownload(options)
+        }
+        throw error
     }
 }

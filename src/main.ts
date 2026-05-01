@@ -4,7 +4,7 @@ import { download } from './downloader'
 import { extractStreamsFromPage, Stream } from './extractor'
 import { extractMetadata, Metadata } from './metadata'
 import { generateFilename } from './filename'
-import { crawlTagPage, crawlSeriesPage, crawlAllTagPages } from './crawler'
+import { crawlTagPage, crawlSeriesPage, crawlAllTagPages, crawlAllSearchPages } from './crawler'
 
 const CSS = `
 .ohentai-dl-btn {
@@ -110,6 +110,9 @@ class DownloadQueue {
     private logCallback: ((message: string, type: 'info' | 'success' | 'error') => void) | null = null
     private itemProgressCallbacks = new Map<number, (pct: number) => void>()
     private nextIndex = 0
+    private bulkMode = false
+
+    setBulkMode(bulk: boolean): void { this.bulkMode = bulk }
 
     add(item: { url: string; filename: string; referer: string; episodeNumber: number }): void {
         this.queue.push({ ...item, queueIndex: this.nextIndex++ })
@@ -146,6 +149,7 @@ class DownloadQueue {
                     url: item.url,
                     filename: item.filename,
                     referer: item.referer,
+                    bulk: this.bulkMode,
                     onProgress: (p) => {
                         this.itemProgressCallbacks.get(idx)?.(p)
                     },
@@ -162,6 +166,9 @@ class DownloadQueue {
 
             completed++
             this.progressCallback?.(completed, total, item.filename)
+            if (this.bulkMode) {
+                await delay(config.get('downloadDelay'))
+            }
         }
 
         const runWorker = async (): Promise<void> => {
@@ -183,6 +190,7 @@ class DownloadQueue {
         this.processing = false
         this.itemProgressCallbacks.clear()
         this.nextIndex = 0
+        this.bulkMode = false
     }
 
     get length(): number { return this.queue.length }
@@ -192,11 +200,40 @@ const downloadQueue = new DownloadQueue()
 
 // ==================== State ====================
 
-const selectedVideos = new Map<string, { vid: string; title: string; pageUrl: string }>()
+const selectedVideos = new Map<string, { vid: string; title: string; pageUrl: string; tags: string[]; series: string }>()
 let bulkVideos: Array<{ vid: string; title: string; pageUrl: string; thumbnail: string; tags: string[]; series: string }> = []
 let bulkPanelOpen = false
 let settingsPanelOpen = false
 let bulkLoading = false
+let bulkVideosCached: typeof bulkVideos = []
+let bulkCacheKey = ''
+
+function saveSelectedVideos(): void {
+    try {
+        GM_setValue('ohentai_selectedVideos', Array.from(selectedVideos.entries()))
+    } catch (e) {
+        debugError('Failed to save selections:', e)
+    }
+}
+
+function loadSelectedVideos(): void {
+    try {
+        const saved = GM_getValue('ohentai_selectedVideos', [])
+        if (Array.isArray(saved)) {
+            for (const [key, value] of saved) {
+                selectedVideos.set(key, value)
+            }
+        }
+    } catch (e) {
+        debugError('Failed to load selections:', e)
+    }
+    debug('Loaded selections:', selectedVideos.size)
+}
+
+function clearSelectedVideos(): void {
+    selectedVideos.clear()
+    GM_setValue('ohentai_selectedVideos', [])
+}
 
 // ==================== UI Components ====================
 
@@ -245,6 +282,56 @@ function createPanel(title: string, content: HTMLElement, onClosed?: () => void)
     document.body.appendChild(panel)
     debug('Panel created:', title)
     return panel
+}
+
+function showLoadingPanel(title: string): Promise<{ panel: HTMLDivElement; overlay: HTMLDivElement; statusText: HTMLDivElement; closeBtn: HTMLButtonElement }> {
+    const existingOverlay = document.querySelector('.ohentai-dl-overlay')
+    const existingPanel = document.querySelector('.ohentai-dl-panel')
+    if (existingOverlay) existingOverlay.remove()
+    if (existingPanel) existingPanel.remove()
+
+    const panel = document.createElement('div')
+    panel.className = 'ohentai-dl-panel'
+
+    const header = document.createElement('div')
+    header.className = 'ohentai-dl-panel-header'
+    const h2 = document.createElement('h2')
+    h2.textContent = title
+    const closeBtn = document.createElement('button')
+    closeBtn.className = 'ohentai-dl-panel-close'
+    closeBtn.textContent = 'x'
+    closeBtn.disabled = true
+    closeBtn.style.opacity = '0.3'
+    closeBtn.addEventListener('click', () => { panel.remove(); overlay.remove(); bulkLoading = false })
+
+    header.appendChild(h2)
+    header.appendChild(closeBtn)
+    panel.appendChild(header)
+
+    const spinner = document.createElement('div')
+    spinner.style.textAlign = 'center'
+    spinner.style.padding = '40px 0'
+    spinner.innerHTML = '<div style="width:40px;height:40px;border:4px solid #333;border-top:4px solid #4a90d9;border-radius:50%;animation:ohentai-spin 1s linear infinite;margin:0 auto;"></div>'
+
+    const style = document.createElement('style')
+    style.textContent = '@keyframes ohentai-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }'
+    document.head.appendChild(style)
+
+    panel.appendChild(spinner)
+
+    const statusText = document.createElement('div')
+    statusText.className = 'ohentai-dl-status ohentai-dl-status-info'
+    statusText.textContent = 'Starting...'
+    statusText.style.textAlign = 'center'
+    panel.appendChild(statusText)
+
+    const overlay = createOverlay()
+    overlay.addEventListener('click', () => { panel.remove(); overlay.remove(); bulkLoading = false })
+
+    document.body.appendChild(overlay)
+    document.body.appendChild(panel)
+
+    return Promise.resolve({ panel, overlay, statusText, closeBtn })
 }
 
 // ==================== Ad Video Filter ====================
@@ -326,12 +413,29 @@ function ensureBulkButton(): void {
     btn.addEventListener('click', () => {
         if (bulkLoading) return
         bulkLoading = true
-        loadBulkVideos().then(() => {
+        const cacheKey = window.location.href
+        if (bulkVideosCached.length > 0 && bulkCacheKey === cacheKey) {
+            bulkVideos = [...bulkVideosCached]
             bulkLoading = false
             showBulkPanel()
-        }).catch(err => {
-            debugError('Failed to load bulk videos:', err)
-            bulkLoading = false
+            return
+        }
+        showLoadingPanel('Crawling videos...').then((panel) => {
+            loadBulkVideos((page, total, count) => {
+                panel.statusText.textContent = `Crawling page ${page}/${total}... Found ${count} videos so far`
+            }).then(() => {
+                bulkVideosCached = [...bulkVideos]
+                bulkCacheKey = cacheKey
+                panel.statusText.textContent = `Found ${bulkVideos.length} videos! Opening panel...`
+                setTimeout(() => { panel.panel.remove(); panel.overlay.remove(); bulkLoading = false; showBulkPanel() }, 500)
+            }).catch(err => {
+                debugError('Failed to load bulk videos:', err)
+                panel.statusText.textContent = `Error: ${err instanceof Error ? err.message : String(err)}`
+                panel.statusText.style.color = '#ff6b6b'
+                panel.closeBtn.disabled = false
+                panel.closeBtn.style.opacity = '1'
+                bulkLoading = false
+            })
         })
     })
 
@@ -378,10 +482,11 @@ function injectCheckboxesToVideoCards(): void {
 
         checkbox.addEventListener('change', () => {
             if (checkbox.checked) {
-                selectedVideos.set(vid, { vid, title, pageUrl: href.startsWith('http') ? href : `https://ohentai.org/${href}` })
+                selectedVideos.set(vid, { vid, title, pageUrl: href.startsWith('http') ? href : `https://ohentai.org/${href}`, tags: [], series: '' })
             } else {
                 selectedVideos.delete(vid)
             }
+            saveSelectedVideos()
             debug('Selected:', selectedVideos.size)
         })
 
@@ -452,6 +557,7 @@ function showBulkPanel(): void {
     selectAllBtn.textContent = `Select All (${bulkVideos.length})`
     selectAllBtn.addEventListener('click', () => {
         bulkVideos.forEach(v => selectedVideos.set(v.vid, v))
+        saveSelectedVideos()
         content.querySelectorAll('input[type="checkbox"]').forEach(cb => (cb as HTMLInputElement).checked = true)
         downloadSelectedBtn.textContent = `Download Selected (${selectedVideos.size})`
     })
@@ -460,7 +566,7 @@ function showBulkPanel(): void {
     deselectAllBtn.className = 'ohentai-dl-btn ohentai-dl-btn-danger'
     deselectAllBtn.textContent = 'Deselect All'
     deselectAllBtn.addEventListener('click', () => {
-        selectedVideos.clear()
+        clearSelectedVideos()
         content.querySelectorAll('input[type="checkbox"]').forEach(cb => (cb as HTMLInputElement).checked = false)
         downloadSelectedBtn.textContent = `Download Selected (${selectedVideos.size})`
     })
@@ -473,6 +579,11 @@ function showBulkPanel(): void {
     toolbar.appendChild(selectAllBtn)
     toolbar.appendChild(deselectAllBtn)
     toolbar.appendChild(downloadSelectedBtn)
+    const copyAllLinksBtn = document.createElement('button')
+    copyAllLinksBtn.className = 'ohentai-dl-btn ohentai-dl-btn-secondary'
+    copyAllLinksBtn.textContent = 'Copy All Download Links'
+    copyAllLinksBtn.addEventListener('click', () => showCopyLinksPanel())
+    toolbar.appendChild(copyAllLinksBtn)
     content.appendChild(toolbar)
 
     const videoList = document.createElement('div')
@@ -491,6 +602,7 @@ function showBulkPanel(): void {
         checkbox.addEventListener('change', () => {
             if (checkbox.checked) selectedVideos.set(video.vid, video)
             else selectedVideos.delete(video.vid)
+            saveSelectedVideos()
             downloadSelectedBtn.textContent = `Download Selected (${selectedVideos.size})`
         })
 
@@ -518,6 +630,83 @@ function showBulkPanel(): void {
     createPanel('Bulk Download', content, () => { bulkPanelOpen = false })
 }
 
+async function showCopyLinksPanel(): Promise<void> {
+    const videosToProcess = bulkVideos.filter(v => selectedVideos.has(v.vid))
+    if (videosToProcess.length === 0) { alert('No videos selected. Select videos first.'); return }
+    const { panel, overlay, statusText, closeBtn } = await showLoadingPanel('Fetching download links...')
+    closeBtn.disabled = false
+    closeBtn.style.opacity = '1'
+    const links: string[] = []
+    const referer = 'https://ohentai.org/'
+    for (let i = 0; i < videosToProcess.length; i++) {
+        const video = videosToProcess[i]
+        statusText.textContent = `Fetching link ${i + 1}/${videosToProcess.length}: ${video.title}`
+        try {
+            const html = await fetch(video.pageUrl, { headers: { Referer: referer } }).then(r => r.text())
+            const doc = new DOMParser().parseFromString(html, 'text/html')
+            const streams = extractStreamsFromPage(doc)
+            if (streams.length > 0) {
+                const stream = streams.find(s => s.source === config.get('preferredSource')) || streams[0]
+                links.push(stream.url)
+            } else { links.push(`# ${sanitizeFilename(video.title)} - NO STREAM FOUND`) }
+        } catch (err) { links.push(`# ${sanitizeFilename(video.title)} - ERROR: ${err instanceof Error ? err.message : String(err)}`) }
+    }
+    const linkText = links.join('\n')
+    panel.remove()
+    overlay.remove()
+    const content = document.createElement('div')
+    const desc = document.createElement('p')
+    desc.style.fontSize = '12px'
+    desc.style.color = '#888'
+    desc.textContent = `Found ${links.filter(l => l.startsWith('http')).length}/${videosToProcess.length} download links. FDM/IDM will auto-use cookies.`
+    content.appendChild(desc)
+    const textarea = document.createElement('textarea')
+    textarea.value = linkText
+    textarea.style.width = '100%'
+    textarea.style.height = '400px'
+    textarea.style.background = '#0a0a14'
+    textarea.style.color = '#6bff6b'
+    textarea.style.border = '1px solid #333'
+    textarea.style.borderRadius = '4px'
+    textarea.style.padding = '10px'
+    textarea.style.fontFamily = 'monospace'
+    textarea.style.fontSize = '11px'
+    textarea.style.resize = 'vertical'
+    textarea.readOnly = true
+    content.appendChild(textarea)
+    const btnRow = document.createElement('div')
+    btnRow.style.display = 'flex'
+    btnRow.style.gap = '8px'
+    btnRow.style.marginTop = '12px'
+    const copyBtn = document.createElement('button')
+    copyBtn.className = 'ohentai-dl-btn ohentai-dl-btn-primary'
+    copyBtn.textContent = 'Copy All Links'
+    copyBtn.addEventListener('click', () => {
+        textarea.select()
+        document.execCommand('copy')
+        copyBtn.textContent = 'Copied!'
+        setTimeout(() => { copyBtn.textContent = 'Copy All Links' }, 2000)
+    })
+    btnRow.appendChild(copyBtn)
+    const txtBtn = document.createElement('button')
+    txtBtn.className = 'ohentai-dl-btn ohentai-dl-btn-success'
+    txtBtn.textContent = 'Download as .txt'
+    txtBtn.addEventListener('click', () => {
+        const blob = new Blob([linkText], { type: 'text/plain' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'ohentai_download_links.txt'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+    })
+    btnRow.appendChild(txtBtn)
+    content.appendChild(btnRow)
+    createPanel('Download Links', content)
+}
+
 function showSettingsPanel(): void {
     if (settingsPanelOpen) return
     settingsPanelOpen = true
@@ -525,11 +714,10 @@ function showSettingsPanel(): void {
     const content = document.createElement('div')
 
     const settings = [
-        { key: 'downloadMethod', label: 'Download Method', type: 'select', options: ['browser', 'gm_download', 'aria2', 'others'] },
+        { key: 'downloadMethod', label: 'Download Method', type: 'select', options: ['browser', 'gm_download', 'aria2', 'direct', 'others'] },
         { key: 'filenameTemplate', label: 'Filename Template', type: 'text' },
         { key: 'tagSeparator', label: 'Tag Separator', type: 'text' },
         { key: 'preferredSource', label: 'Preferred Source', type: 'text' },
-        { key: 'chunksPerVideo', label: 'Chunks per Video', type: 'number' },
         { key: 'concurrentVideos', label: 'Concurrent Videos', type: 'number' },
         { key: 'downloadDelay', label: 'Delay (ms)', type: 'number' },
         { key: 'aria2RpcUrl', label: 'Aria2 RPC URL', type: 'text' },
@@ -653,23 +841,6 @@ function showSettingsPanel(): void {
     cookieSection.appendChild(clearCookieBtn)
 
     content.appendChild(cookieSection)
-
-    const copyLinkBtn = document.createElement('button')
-    copyLinkBtn.className = 'ohentai-dl-btn ohentai-dl-btn-primary'
-    copyLinkBtn.textContent = 'Copy Download Link'
-    copyLinkBtn.style.marginTop = '12px'
-    copyLinkBtn.addEventListener('click', () => {
-        const streamUrl = prompt('Paste video stream URL to get download link:')
-        if (streamUrl) {
-            const cookies = config.get('customCookies') || document.cookie
-            const linkText = `${streamUrl}\nReferer: https://ohentai.org/\nCookie: ${cookies}`
-            navigator.clipboard.writeText(linkText).then(() => {
-                copyLinkBtn.textContent = 'Copied!'
-                setTimeout(() => { copyLinkBtn.textContent = 'Copy Download Link' }, 2000)
-            })
-        }
-    })
-    content.appendChild(copyLinkBtn)
 
     const resetBtn = document.createElement('button')
     resetBtn.className = 'ohentai-dl-btn ohentai-dl-btn-danger'
@@ -838,6 +1009,7 @@ async function startBulkDownload(): Promise<void> {
 
     const { update, log } = showProgressPanel(selectedVideos.size)
     downloadQueue.clear()
+    downloadQueue.setBulkMode(true)
 
     const videos = Array.from(selectedVideos.values())
     const totalVideos = videos.length
@@ -856,6 +1028,13 @@ async function startBulkDownload(): Promise<void> {
             const meta = extractMetadataFromDoc(doc)
 
             if (streams.length > 0 && meta) {
+                const expectedTags = video.tags || []
+                const expectedSeries = video.series || ''
+                if (isAdVideo(meta, expectedTags, expectedSeries)) {
+                    log(`  Skipped ad: ${video.title}`, 'info')
+                    return
+                }
+
                 const preferredSource = config.get('preferredSource')
                 const stream = streams.find(s => s.source === preferredSource) || streams[0]
 
@@ -868,6 +1047,7 @@ async function startBulkDownload(): Promise<void> {
                     metadata: meta,
                     uploadDate: meta.uploadDate || meta.releaseDate || '',
                 })
+                log(`  OK: ${video.title}`, 'success')
             } else {
                 log(`  No streams/metadata for: ${video.title}`, 'error')
             }
@@ -880,7 +1060,8 @@ async function startBulkDownload(): Promise<void> {
         const batch = videos.slice(i, i + concurrency)
         const batchPromises = batch.map((v, idx) => fetchOne(v, i + idx))
         await Promise.all(batchPromises)
-        log(`Fetched batch ${Math.floor(i / concurrency) + 1}/${Math.ceil(totalVideos / concurrency)} (${batch.length} videos)`, 'info')
+        const batchTitles = batch.map(v => v.title)
+        log(`Batch ${Math.floor(i / concurrency) + 1}/${Math.ceil(totalVideos / concurrency)}: ${batchTitles.join(' | ')}`, 'info')
     }
 
     log(`All ${videosWithMeta.length}/${totalVideos} videos fetched. Sorting by date...`, 'info')
@@ -921,7 +1102,7 @@ async function startBulkDownload(): Promise<void> {
     await downloadQueue.process()
 }
 
-async function loadBulkVideos(): Promise<void> {
+async function loadBulkVideos(onProgress?: (page: number, total: number, count: number) => void): Promise<void> {
     const url = window.location.href
     debug('Loading bulk from:', url)
 
@@ -985,37 +1166,31 @@ async function loadBulkVideos(): Promise<void> {
         bulkVideos = []
 
         try {
-            const allVideos = await crawlAllTagPages(tag, 100, (page, total) => {
-                debug(`Page ${page}/${total}`)
+            const allVideos = await crawlAllTagPages(tag, 100, (page, total, count) => {
+                debug(`Page ${page}/${total}`, count)
+                onProgress?.(page, total, count)
             })
             bulkVideos = allVideos.map(v => ({ ...v, tags: [tag], series: '' }))
             debug(`Found ${bulkVideos.length} videos`)
         } catch (error) {
             debugError('Crawl error:', error)
+            throw error
         }
     } else if (url.includes('search.php')) {
-        debug('Loading search results')
+        debug('Crawling search results')
         bulkVideos = []
 
-        const bricks = document.querySelectorAll('.videobrick')
-        bricks.forEach(brick => {
-            const link = brick.querySelector('.videotitle a')
-            if (link) {
-                const href = link.getAttribute('href') || ''
-                const vidMatch = href.match(/vid=([^&]+)/)
-                if (vidMatch) {
-                    bulkVideos.push({
-                        vid: vidMatch[1],
-                        title: link.textContent?.trim() || '',
-                        pageUrl: href.startsWith('http') ? href : `https://ohentai.org/${href}`,
-                        thumbnail: '',
-                        tags: [],
-                        series: '',
-                    })
-                }
-            }
-        })
-        debug(`Found ${bulkVideos.length} videos`)
+        try {
+            const allVideos = await crawlAllSearchPages(100, (page, total, count) => {
+                debug(`Page ${page}/${total}`, count)
+                onProgress?.(page, total, count)
+            })
+            bulkVideos = allVideos.map(v => ({ ...v, tags: [], series: '' }))
+            debug(`Found ${bulkVideos.length} videos`)
+        } catch (error) {
+            debugError('Crawl error:', error)
+            throw error
+        }
     }
 }
 
@@ -1142,6 +1317,8 @@ function onPageChange(): void {
     document.querySelectorAll('.ohentai-dl-btn, .ohentai-dl-bulk-btn, .ohentai-dl-checkbox-inject, .ohentai-dl-download-btn-card, .ohentai-dl-single-btn').forEach(el => el.remove())
     bulkPanelOpen = false
     settingsPanelOpen = false
+    if (bulkCacheKey !== window.location.href) { bulkVideosCached = []; bulkCacheKey = '' }
+    loadSelectedVideos()
 
     const isDetailPage = window.location.pathname.includes('detail.php')
     if (isDetailPage) {
@@ -1161,6 +1338,7 @@ function mount(): void {
     debug('Mounting', window.location.href)
 
     injectStyles()
+    loadSelectedVideos()
     ensureSettingsButton()
 
     const isDetailPage = window.location.pathname.includes('detail.php')

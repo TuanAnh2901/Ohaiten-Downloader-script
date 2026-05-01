@@ -57,7 +57,7 @@ export interface LooseObject {
     [key: string]: unknown
 }
 
-export type DownloadMethod = 'browser' | 'gm_download' | 'aria2' | 'others'
+export type DownloadMethod = 'browser' | 'gm_download' | 'aria2' | 'others' | 'direct'
 
 export interface VideoInfo {
     vid: string

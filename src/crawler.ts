@@ -12,31 +12,87 @@ export async function crawlSeriesPage(seryid: string): Promise<CrawlResult> {
     return parseSeriesPage(html)
 }
 
-export async function crawlAllTagPages(tag: string, maxPages: number = 100, onProgress?: (page: number, total: number) => void): Promise<CrawlResult['videos']> {
+export async function crawlAllTagPages(tag: string, maxPages: number = 100, onProgress?: (page: number, total: number, count: number) => void): Promise<CrawlResult['videos']> {
     const allVideos: CrawlResult['videos'] = []
+    const seenVids = new Set<string>()
     let page = 1
-    let hasNext = true
+    let emptyPages = 0
 
-    while (hasNext && page <= maxPages) {
+    while (page <= maxPages && emptyPages < 2) {
         const result = await crawlTagPage(tag, page)
-        allVideos.push(...result.videos)
-        hasNext = result.hasNextPage
+        const newVideos = result.videos.filter(v => !seenVids.has(v.vid))
+        newVideos.forEach(v => seenVids.add(v.vid))
+        allVideos.push(...newVideos)
+
+        if (result.videos.length === 0) {
+            emptyPages++
+        } else {
+            emptyPages = 0
+        }
+
         page++
-        onProgress?.(page - 1, result.totalPages)
+        onProgress?.(page - 1, Math.max(page - 1, result.totalPages), allVideos.length)
     }
 
     allVideos.reverse()
     return allVideos
 }
 
-async function fetchPage(url: string): Promise<string> {
-    const response = await fetch(url, {
-        headers: {
-            'Referer': 'https://ohentai.org/',
-        },
+export async function crawlSearchPage(page: number = 1): Promise<CrawlResult> {
+    const url = `https://ohentai.org/search.php?p=${page}`
+    const html = await fetchPage(url)
+    return parseVideoListPage(html, page)
+}
+
+export async function crawlAllSearchPages(maxPages: number = 100, onProgress?: (page: number, total: number, count: number) => void): Promise<CrawlResult['videos']> {
+    const allVideos: CrawlResult['videos'] = []
+    const seenVids = new Set<string>()
+    let page = 1
+    let emptyPages = 0
+
+    while (page <= maxPages && emptyPages < 2) {
+        const result = await crawlSearchPage(page)
+        const newVideos = result.videos.filter(v => !seenVids.has(v.vid))
+        newVideos.forEach(v => seenVids.add(v.vid))
+        allVideos.push(...newVideos)
+
+        if (result.videos.length === 0) {
+            emptyPages++
+        } else {
+            emptyPages = 0
+        }
+
+        page++
+        onProgress?.(page - 1, Math.max(page - 1, result.totalPages), allVideos.length)
+    }
+
+    allVideos.reverse()
+    return allVideos
+}
+
+function fetchPage(url: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url,
+            headers: {
+                'Referer': 'https://ohentai.org/',
+            },
+            onload: (response) => {
+                if (response.status >= 200 && response.status < 300) {
+                    resolve(response.responseText)
+                } else {
+                    reject(new Error(`Failed to fetch ${url}: ${response.status}`))
+                }
+            },
+            onerror: (error) => {
+                reject(new Error(`Network error fetching ${url}: ${error}`))
+            },
+            ontimeout: () => {
+                reject(new Error(`Timeout fetching ${url}`))
+            },
+        })
     })
-    if (!response.ok) throw new Error(`Failed to fetch ${url}: ${response.status}`)
-    return response.text()
 }
 
 function parseVideoListPage(html: string, currentPage: number): CrawlResult {
@@ -50,6 +106,7 @@ function parseVideoListPage(html: string, currentPage: number): CrawlResult {
         const link = brick.querySelector('.videotitle a, a[href*="detail.php?vid="]')
         if (link) {
             const href = link.getAttribute('href') || ''
+            if (!href.includes('detail.php?vid=')) return
             const vidMatch = href.match(/vid=([^&]+)/)
             const vid = vidMatch ? vidMatch[1] : ''
             const title = link.textContent?.trim() || ''
@@ -84,6 +141,7 @@ function parseSeriesPage(html: string): CrawlResult {
         const link = brick.querySelector('.videotitle a, a[href*="detail.php?vid="]')
         if (link) {
             const href = link.getAttribute('href') || ''
+            if (!href.includes('detail.php?vid=')) return
             const vidMatch = href.match(/vid=([^&]+)/)
             const vid = vidMatch ? vidMatch[1] : ''
             const title = link.textContent?.trim() || ''
