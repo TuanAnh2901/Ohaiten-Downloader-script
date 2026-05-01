@@ -1,7 +1,7 @@
 import { CrawlResult } from './env'
 
 export async function crawlTagPage(tag: string, page: number = 1): Promise<CrawlResult> {
-    const url = `https://ohentai.org/tagsearch.php?tag=${encodeURIComponent(tag)}&page=${page}`
+    const url = `https://ohentai.org/tagsearch.php?tag=${encodeURIComponent(tag)}&p=${page}`
     const html = await fetchPage(url)
     return parseVideoListPage(html, page)
 }
@@ -174,21 +174,54 @@ function extractHasNextPage(doc: Document): boolean {
     const pagination = doc.querySelector('.pagination')
     if (!pagination) return false
 
-    const nextLink = pagination.querySelector('li:last-child a')
-    if (!nextLink) return false
+    const links = pagination.querySelectorAll('a')
+    for (const link of links) {
+        const href = link.getAttribute('href') || ''
+        const text = link.textContent?.trim().toLowerCase()
+        if (text === 'next' || text === '»' || text === '>' || href.includes('&p=')) {
+            const pageNum = href.match(/p=(\d+)/)
+            if (pageNum) {
+                const currentActive = pagination.querySelector('.active')
+                const currentPageText = currentActive?.textContent?.trim()
+                if (currentPageText && /^\d+$/.test(currentPageText)) {
+                    return parseInt(pageNum[1], 10) > parseInt(currentPageText, 10)
+                }
+                return true
+            }
+        }
+    }
 
-    const text = nextLink.textContent?.trim().toLowerCase()
-    return text === 'next' || text === '»' || text === '>'
+    const allPageNums: number[] = []
+    links.forEach(link => {
+        const href = link.getAttribute('href') || ''
+        const pMatch = href.match(/p=(\d+)/)
+        if (pMatch) allPageNums.push(parseInt(pMatch[1], 10))
+    })
+    if (allPageNums.length > 0) {
+        const currentActive = pagination.querySelector('.active')
+        const currentPageText = currentActive?.textContent?.trim()
+        if (currentPageText && /^\d+$/.test(currentPageText)) {
+            const current = parseInt(currentPageText, 10)
+            return Math.max(...allPageNums) > current
+        }
+    }
+
+    return false
 }
 
 function extractTotalPages(doc: Document, currentPage: number): number {
     const pagination = doc.querySelector('.pagination')
     if (!pagination) return currentPage
 
-    const pageLinks = pagination.querySelectorAll('a, div.active')
     let maxPage = currentPage
-
-    pageLinks.forEach(link => {
+    const links = pagination.querySelectorAll('a')
+    links.forEach(link => {
+        const href = link.getAttribute('href') || ''
+        const pMatch = href.match(/p=(\d+)/)
+        if (pMatch) {
+            const num = parseInt(pMatch[1], 10)
+            if (num > maxPage) maxPage = num
+        }
         const text = link.textContent?.trim()
         if (text && /^\d+$/.test(text)) {
             const num = parseInt(text, 10)

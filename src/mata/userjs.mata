@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Ohentai Downloader
 // @namespace    https://github.com/ohentai-downloader
-// @version      1.0.9
+// @version      1.1.0
 // @description  Download videos from ohentai.org - Single, Bulk (Tag/Series), with customizable filename templates
 // @author       OhentaiDownloader
 // @match        https://ohentai.org/*
