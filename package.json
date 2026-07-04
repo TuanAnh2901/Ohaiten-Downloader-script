@@ -1,0 +1,33 @@
+{
+  "name": "@animehay/cli",
+  "version": "0.0.1",
+  "description": "CLI for Animehay downloader",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "bin": {
+    "animehay": "./bin/animehay.js"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node dist/index.cjs",
+    "test": "vitest run",
+    "verify-scope": "node scripts/check-scope.mjs",
+    "build:sea": "node build-sea.mjs"
+  },
+  "prepublishOnly": "node scripts/check-scope.mjs",
+  "dependencies": {
+    "commander": "^12.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "tsx": "^4.16.0",
+    "esbuild": "^0.23.0",
+    "@types/node": "^20.14.0",
+    "vitest": "^1.6.0"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "scripts"
+  ]
+}

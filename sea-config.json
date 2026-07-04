@@ -1,0 +1,7 @@
+{
+  "main": "dist/index.cjs",
+  "output": "dist/index.blob",
+  "disableExperimentalSEAWarning": true,
+  "useSnapshot": false,
+  "useCodeCache": false
+}
