@@ -1,0 +1,13 @@
+{
+  "name": "animehay-downloader",
+  "version": "1.0.0",
+  "description": "Tampermonkey userscript for downloading videos from animehay.tv",
+  "scripts": {
+    "build": "tsx build/build.ts",
+    "dev": "tsx build/build.ts --watch"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.0",
+    "tsx": "^4.7.0"
+  }
+}

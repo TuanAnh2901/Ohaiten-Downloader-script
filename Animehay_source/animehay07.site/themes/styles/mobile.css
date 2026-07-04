@@ -1,0 +1,2247 @@
+﻿/*
+ * mobile.css — AnimeHay Responsive v5 (FINAL CLEAN)
+ * Audited: modern.css, watching.css, auth.css, forum.css đã có 600-960px rules.
+ * File này bổ sung: PC centering + mobile overrides còn thiếu.
+ * Load order: cuối cùng (sau mọi file khác).
+ * ============================================================ */
+
+/* ============================================================
+   1. PC — Fixed-width centered container
+   modern.css có max-width: 1280px nhưng THIẾU margin: auto.
+   ============================================================ */
+#ah_wrapper {
+  margin: 0 auto;
+}
+
+
+/* ============================================================
+   2. GLOBAL MOBILE (≤ 768px)
+   ============================================================ */
+
+@media (max-width: 768px) {
+
+  /* ── Overflow prevention ── */
+  html,
+  body {
+    overflow-x: hidden;
+  }
+
+  #ah_wrapper,
+  .ah_content {
+    overflow-x: hidden;
+    max-width: 100%;
+  }
+
+  /* ── iOS auto-zoom: input font-size < 16px → Safari zoom ── */
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+
+  /* ════════════════════════════════════════════════════════
+     NAVBAR — Grid 3 vùng: Logo | Search | Actions
+     Thay flex vì .ah-actions { margin-left: auto } làm lệch
+     CSS Grid cho phép phân chia cân đều hơn
+     ════════════════════════════════════════════════════════ */
+  .ah-navbar__top {
+    display: grid !important;
+    grid-template-columns: auto 1fr auto !important;
+    align-items: center !important;
+    gap: 8px !important;
+    padding: 6px 12px !important;
+  }
+
+  /* Vùng 1: Logo */
+  .ah-logo {
+    grid-column: 1;
+    justify-self: start;
+  }
+
+  .ah-logo img {
+    height: 28px;
+    width: auto;
+    display: block;
+  }
+
+  /* Vùng 2: Search — chiếm toàn bộ 1fr */
+  .ah-search {
+    grid-column: 2;
+    flex: none !important;
+    max-width: none !important;
+    width: 100%;
+    min-width: 0;
+    position: relative;
+  }
+
+  .ah-search form {
+    width: 100%;
+    min-width: 0;
+    border-radius: 22px;
+    /* pill style trên mobile */
+  }
+
+  .ah-search input {
+    font-size: 16px !important;
+    padding: 8px 4px 8px 14px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .ah-search button {
+    padding: 8px 12px;
+    min-width: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Vùng 3: Actions — bỏ margin-left: auto cũ */
+  .ah-actions {
+    grid-column: 3;
+    justify-self: end;
+    margin-left: 0 !important;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+  }
+
+  /* Touch targets */
+  .ah-action-btn {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  .ah-btn-login {
+    font-size: 13px;
+    padding: 0 10px;
+    height: 40px;
+    min-height: 40px;
+    white-space: nowrap;
+    gap: 4px;
+  }
+
+  /* ── Nav links: horizontal scroll không wrap ── */
+  .ah-navbar__nav {
+    overflow: visible;
+  }
+
+  .ah-nav__links {
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 0 8px;
+    gap: 0;
+  }
+
+  .ah-nav__links::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ah-nav-link {
+    min-height: 44px;
+    padding: 0 10px;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  .ah-nav-link .material-icons-round {
+    font-size: 18px;
+  }
+
+  /* ════════════════════════════════════════════════════════
+     HOMEPAGE LAYOUT
+     ════════════════════════════════════════════════════════ */
+  .ah-home {
+    padding: 0 10px;
+  }
+
+  .ah-home__body {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 16px;
+  }
+
+  .ah-sidebar {
+    position: static !important;
+    top: auto !important;
+  }
+
+  /* ── Movie grid: 2 cột ── */
+  .movies-list {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .movies-list>* {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .mc {
+    min-width: 0;
+    overflow: hidden;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .mc__name {
+    font-size: 12px;
+  }
+
+  .mc__info {
+    padding: 6px 8px 8px;
+  }
+
+  /* ── Hero carousel ── */
+  .ah-hero {
+    overflow: hidden;
+  }
+
+  .ah-hero__slide {
+    aspect-ratio: 3 / 2;
+  }
+
+  .ah-hero__content {
+    padding: 14px 16px 18px;
+  }
+
+  .ah-hero__title {
+    font-size: clamp(15px, 4.5vw, 22px);
+    margin-bottom: 8px;
+    max-width: 100%;
+  }
+
+  .ah-hero__meta {
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+
+  .ah-hero__actions {
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .ah-btn-watch,
+  .ah-btn-info {
+    padding: 9px 16px;
+    font-size: 13px;
+    min-height: 40px;
+  }
+
+  /* ── Section header — KHÔNG overflow:hidden (clip chip scroller) ── */
+  .ah-section-header {
+    padding: 16px 0 10px;
+    gap: 8px;
+    flex-wrap: nowrap;
+    overflow: visible;
+  }
+
+  .ah-section-title {
+    font-size: 15px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .ah-section-link {
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-size: 12px;
+  }
+
+  /* ── Genre chips: scroll ngang ── */
+  .ah-genre-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+
+  .ah-genre-chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ah-genre-chip {
+    flex-shrink: 0;
+    white-space: nowrap;
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+
+  /* ── Sidebar compact khi stack dọc ── */
+  .ah-sidebar-card__header {
+    font-size: 12px;
+    padding: 9px 12px;
+  }
+
+  .ah-trend-item {
+    padding: 7px 10px;
+  }
+
+  .ah-trend-item__name {
+    font-size: 11px;
+  }
+
+  .ah-ep-item {
+    padding: 8px 10px;
+  }
+
+  .ah-ep-item__name {
+    font-size: 11px;
+  }
+
+  /* ════════════════════════════════════════════════════════
+     DROPDOWNS
+     ════════════════════════════════════════════════════════ */
+  #drop-down-3.noti-panel {
+    width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 16px) !important;
+    left: 8px !important;
+    right: 8px !important;
+    max-height: 80dvh !important;
+  }
+
+  .noti-tab {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  .dd2-link,
+  .dd2-logout {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+
+  /* ════════════════════════════════════════════════════════
+     FILTER PAGE (sp-*)
+     ════════════════════════════════════════════════════════ */
+  .sp-wrap {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .sp-chip {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+
+  .sp-btn-apply,
+  .sp-btn-reset {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 20px;
+    font-size: 15px;
+  }
+
+  .sp-filter-toggle {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* ════════════════════════════════════════════════════════
+     MOVIE INFO PAGE (aim-*)
+     ════════════════════════════════════════════════════════ */
+  .aim-body {
+    grid-template-columns: 1fr !important;
+  }
+
+  .aim-hero {
+    border-radius: 0;
+  }
+
+  /* ════════════════════════════════════════════════════════
+     WATCHING PAGE (wp-*)
+     watching.css đã xử lý 960px + 600px.
+     Bổ sung: page padding + episode grid compact
+     ════════════════════════════════════════════════════════ */
+  .wp-page {
+    padding: 0 10px 40px;
+  }
+
+  .wp-eplist__grid {
+    grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)) !important;
+    gap: 5px !important;
+  }
+
+  /* ════════════════════════════════════════════════════════
+     FOOTER
+     ════════════════════════════════════════════════════════ */
+  /* .ah-footer__grid đã bỏ — dùng .ah-footer__inner */
+  .ah-footer {
+    padding: 32px 16px 20px;
+  }
+
+}
+
+/* end @media (max-width: 768px) */
+
+
+/* ============================================================
+   3. SMALL MOBILE (≤ 480px) — Icon-only nav, compact layout
+   ============================================================ */
+
+@media (max-width: 480px) {
+
+  /* Logo nhỏ hơn */
+  .ah-logo img {
+    height: 26px;
+  }
+
+  /* ── Nav links: icon-only ──
+     Dùng font-size: 0 vì text là text node (không phải span).
+     Rule span:not(.material-icons-round) không target được text nodes. */
+  .ah-nav-link {
+    font-size: 0 !important;
+    /* ẩn text node */
+    padding: 0 6px;
+    gap: 0;
+  }
+
+  .ah-nav-link .material-icons-round {
+    font-size: 18px;
+    /* khôi phục icon */
+  }
+
+  /* ── Login button: icon only ── */
+  .ah-btn-login {
+    font-size: 0 !important;
+    /* ẩn text */
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0 !important;
+    border-radius: 8px;
+    justify-content: center;
+    gap: 0;
+  }
+
+  .ah-btn-login .material-icons-round {
+    font-size: 20px;
+    /* khôi phục icon */
+  }
+
+  /* ── Hero ── */
+  .ah-hero__slide {
+    aspect-ratio: 4 / 3;
+  }
+
+  .ah-hero__content {
+    padding: 10px 12px 14px;
+  }
+
+  .ah-hero__badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    margin-bottom: 6px;
+  }
+
+  .ah-hero__title {
+    font-size: 14px;
+    margin-bottom: 6px;
+  }
+
+  .ah-hero__meta {
+    font-size: 11px;
+    margin-bottom: 10px;
+  }
+
+  .ah-btn-watch,
+  .ah-btn-info {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  /* ── Movie grid compact ── */
+  .movies-list {
+    gap: 6px !important;
+  }
+
+  .mc__name {
+    font-size: 11px;
+  }
+
+  .mc__ep-badge {
+    font-size: 9px;
+    padding: 1px 4px;
+  }
+
+  /* ── Home ── */
+  .ah-home {
+    padding: 0 8px;
+  }
+
+  .ah-section-title {
+    font-size: 14px;
+  }
+
+  /* ── Dropdowns: full viewport width ── */
+  #drop-down-2 {
+    min-width: calc(100vw - 24px) !important;
+    right: 8px !important;
+    left: 8px !important;
+  }
+
+  #drop-down-3.noti-panel {
+    width: calc(100vw - 12px) !important;
+    max-width: calc(100vw - 12px) !important;
+    left: 6px !important;
+    right: 6px !important;
+  }
+
+  #ah-search-panel {
+    left: 8px !important;
+    right: 8px !important;
+    width: calc(100vw - 16px) !important;
+    max-height: 70dvh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ── Category mega-menu: full-screen overlay ── */
+  #drop-down-1.dropdown-open {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    max-height: 100dvh !important;
+    overflow-y: auto !important;
+    border-radius: 0 !important;
+    z-index: 9999 !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #drop-down-1 .tab-content .flex.flex-wrap {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 6px;
+  }
+
+  #drop-down-1 .dd-quicklinks {
+    flex-wrap: wrap;
+  }
+
+  /* ── Filter: label full-width → chips wrap bên dưới ──
+     KHÔNG dùng flex-direction:column (khiến chips stretch full-width).
+     Dùng label width:100% để đẩy label lên hàng riêng, chips tự wrap. */
+  .sp-filter-row {
+    display: flex !important;
+    flex-direction: row !important;
+    /* giữ row để chips wrap đúng */
+    flex-wrap: wrap !important;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .sp-filter-label {
+    width: 100%;
+    /* label chiếm toàn hàng → chips bắt đầu hàng mới */
+    min-width: unset;
+    font-size: 11px;
+    padding-bottom: 2px;
+    margin-bottom: 0;
+  }
+
+  .sp-chip {
+    flex: 0 0 auto !important;
+    /* chip không stretch, giữ kích thước tự nhiên */
+    min-height: 38px !important;
+    padding: 6px 12px !important;
+    font-size: 13px !important;
+  }
+
+  .sp-filter-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .sp-btn-apply,
+  .sp-btn-reset {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* ── Episode list compact ── */
+  .wp-eplist__grid {
+    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)) !important;
+    gap: 4px !important;
+  }
+
+  /* ── Pagination ── */
+  .ah-pagination {
+    gap: 4px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .ah-page-btn {
+    min-width: 36px;
+    min-height: 36px;
+    font-size: 12px;
+  }
+
+  /* ── General container ── */
+  .ah-container,
+  .main-content {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+}
+
+/* end @media (max-width: 480px) */
+
+
+/* ============================================================
+   4. HOVER → ACTIVE — Touch devices (không có chuột)
+   @media (hover: none) = cảm ứng, bỏ hover state
+   ============================================================ */
+
+@media (hover: none) {
+
+  /* Movie cards */
+  .mc:hover {
+    transform: none;
+    box-shadow: none;
+    border-color: var(--ah-border);
+    z-index: auto;
+  }
+
+  .mc:hover .mc__poster img {
+    transform: none;
+  }
+
+  .mc:hover .mc__overlay {
+    opacity: 0;
+  }
+
+  .mc:active {
+    transform: scale(0.97);
+    transition: transform 0.1s ease;
+  }
+
+  /* Buttons */
+  .ah-action-btn:hover {
+    background: transparent;
+    color: var(--ah-text-muted);
+  }
+
+  .ah-action-btn:active {
+    background: var(--ah-surface-2);
+    color: var(--ah-text);
+  }
+
+  .ah-nav-link:hover {
+    color: var(--ah-text-muted);
+    background: transparent;
+  }
+
+  .ah-nav-link:active {
+    color: var(--ah-accent);
+    background: var(--ah-surface-2);
+  }
+
+  .ah-btn-login:hover {
+    opacity: 1;
+    box-shadow: none;
+  }
+
+  .ah-btn-login:active {
+    opacity: 0.82;
+  }
+
+  .ah-search button:hover {
+    color: var(--ah-text-muted);
+  }
+
+  .ah-search button:active {
+    color: var(--ah-accent);
+  }
+
+  /* Filter */
+  .sp-chip:hover {
+    border-color: rgba(255, 255, 255, 0.1);
+    color: var(--ah-text-muted);
+  }
+
+  .sp-chip:not(.active):active {
+    border-color: var(--ah-accent);
+    color: var(--ah-accent);
+    background: var(--ah-accent-soft);
+  }
+
+  .sp-btn-apply:active {
+    opacity: 0.82;
+    transform: scale(0.98);
+  }
+
+  .sp-btn-reset:active {
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  /* Dropdowns */
+  .dd2-link:hover {
+    background: transparent;
+  }
+
+  .dd2-link:active {
+    background: var(--ah-surface-2);
+  }
+
+  .dd2-logout:hover {
+    background: transparent;
+  }
+
+  .dd2-logout:active {
+    background: rgba(255, 59, 92, 0.12);
+  }
+
+  .noti-tab:hover {
+    color: var(--ah-text-muted);
+  }
+
+  .noti-tab:not(.active):active {
+    color: var(--ah-text);
+    background: var(--ah-surface-2);
+  }
+
+  /* Category menu */
+  #drop-down-1 .tab-content a:hover {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.08);
+    color: var(--ah-text-muted);
+    box-shadow: none;
+  }
+
+  #drop-down-1 .tab-content a:active {
+    background: rgba(200, 40, 40, 0.18);
+    border-color: var(--ah-accent);
+    color: #fff;
+  }
+
+  #drop-down-1 .item-tab-link:hover {
+    border-color: rgba(255, 255, 255, 0.08);
+    color: var(--ah-text-muted);
+  }
+
+  #drop-down-1 .item-tab-link:active {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  /* Homepage */
+  .ah-btn-watch:hover {
+    opacity: 1;
+    box-shadow: none;
+  }
+
+  .ah-btn-watch:active {
+    opacity: 0.8;
+  }
+
+  .ah-btn-info:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .ah-btn-info:active {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .ah-trend-item:hover {
+    background: transparent;
+  }
+
+  .ah-trend-item:active {
+    background: var(--ah-surface-2);
+  }
+
+  .ah-ep-item:hover {
+    background: transparent;
+  }
+
+  .ah-ep-item:active {
+    background: var(--ah-surface-2);
+  }
+
+  .ah-genre-chip:hover {
+    background: var(--ah-surface-2);
+    border-color: var(--ah-border);
+  }
+
+  .ah-genre-chip:active {
+    background: var(--ah-accent-soft);
+    border-color: var(--ah-accent);
+    color: var(--ah-accent);
+  }
+
+  .ah-section-link:hover {
+    color: var(--ah-text-muted);
+  }
+
+  .ah-section-link:active {
+    color: var(--ah-accent);
+  }
+
+  .ah-footer a:hover {
+    color: var(--ah-text-muted);
+  }
+
+  .ah-footer a:active {
+    color: var(--ah-accent);
+  }
+
+}
+
+/* end @media (hover: none) */
+
+
+/* ============================================================
+   5. FOCUS-VISIBLE — Keyboard accessibility
+   ============================================================ */
+.ah-action-btn:focus-visible,
+.ah-nav-link:focus-visible,
+.ah-btn-login:focus-visible,
+.sp-chip:focus-visible,
+.sp-btn-apply:focus-visible,
+.sp-btn-reset:focus-visible,
+.dd2-link:focus-visible,
+.noti-tab:focus-visible {
+  outline: 2px solid var(--ah-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+
+/* ============================================================
+   6. SAFE-AREA — iPhone notch / Dynamic Island
+   ============================================================ */
+@supports (padding: env(safe-area-inset-bottom)) {
+  @media (max-width: 768px) {
+    .ah-navbar {
+      padding-top: env(safe-area-inset-top, 0);
+    }
+
+    .ah-footer {
+      padding-bottom: calc(20px + env(safe-area-inset-bottom, 0));
+    }
+  }
+}
+
+/* ============================================================
+   MOVIE INFO PAGE (aim-*) — Mobile Optimization
+   Thêm sau section 2 (768px rules) trong mobile.css
+   ============================================================ */
+
+@media (max-width: 768px) {
+
+  /* ── Hero: Stack poster trên cùng, info bên dưới ──
+     Desktop: flex-row (poster left 180px + info right)
+     Mobile: flex-column (poster centered, info full width) */
+  .aim-hero {
+    min-height: auto;
+    align-items: stretch;
+  }
+
+  .aim-hero__body {
+    flex-direction: column !important;
+    align-items: center !important;
+    padding: 20px 16px 26px !important;
+    gap: 16px !important;
+  }
+
+  /* Poster: nhỏ lại, centered */
+  .aim-hero__poster {
+    width: 120px !important;
+    flex-shrink: 0;
+  }
+
+  /* Info: full width, centered text */
+  .aim-hero__info {
+    width: 100%;
+    text-align: center;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .aim-hero__title {
+    font-size: clamp(18px, 5vw, 26px) !important;
+    text-align: center;
+  }
+
+  .aim-hero__alt-name {
+    text-align: center;
+  }
+
+  .aim-hero__meta {
+    justify-content: center;
+  }
+
+  .aim-hero__cates {
+    justify-content: center;
+  }
+
+  .aim-hero__actions {
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* Action buttons: min 44px tap target, fill row evenly */
+  .aim-btn-watch,
+  .aim-btn-follow,
+  .aim-btn-rate {
+    min-height: 44px;
+    padding: 10px 16px;
+    font-size: 14px;
+    flex: 1 1 calc(33% - 6px);
+    justify-content: center;
+    box-sizing: border-box;
+  }
+
+  /* Rating panel: full width */
+  .aim-rating-panel {
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* ── Bind movie: giảm margin ── */
+  .aim-bind {
+    margin: 10px 10px;
+    padding: 12px 14px;
+  }
+
+  /* ── Body: 1 cột, giảm padding ──
+     Desktop: grid 1fr 1fr; padding 0 20px
+     Mobile: 1 cột full width */
+  .aim-body {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    padding: 0 10px 12px !important;
+    gap: 10px !important;
+  }
+
+  /* Episodes + Description sections: full width */
+  .aim-episodes,
+  .aim-desc {
+    padding: 14px;
+    border-radius: 10px;
+    box-sizing: border-box;
+  }
+
+  /* Episode buttons: tăng tap target */
+  .aim-ep-btn {
+    height: 40px;
+    /* gần 44px là tốt */
+    font-size: 13px;
+    min-height: 38px;
+  }
+
+  .aim-ep-group-tab {
+    min-height: 36px;
+    padding: 6px 14px;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* Description toggle button */
+  .aim-desc__toggle {
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    font-size: 14px;
+  }
+
+  /* Section title */
+  .aim-section-title {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+
+  /* ── Comments section ── */
+  .aim-comments {
+    margin: 0 10px 12px !important;
+    padding: 14px !important;
+    border-radius: 10px;
+  }
+
+  .aim-comments__header {
+    margin-bottom: 10px;
+  }
+
+  /* ── Similar movies ── */
+  .aim-similar {
+    margin: 0 10px 12px !important;
+    padding: 14px !important;
+    border-radius: 10px;
+  }
+
+  /* ── Forum section ── */
+  .aim-forum {
+    margin: 0 10px 12px !important;
+    padding: 14px !important;
+    border-radius: 10px;
+  }
+
+  .aim-forum__thread {
+    padding: 10px 12px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* Touch: aim-cate-chip */
+  .aim-cate-chip {
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 12px;
+  }
+
+  /* aim-btn-watch/follow/rate: active feedback */
+}
+
+@media (hover: none) {
+  .aim-btn-watch:hover {
+    opacity: 1;
+    box-shadow: none;
+  }
+
+  .aim-btn-watch:active {
+    opacity: 0.82;
+  }
+
+  .aim-btn-follow:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .aim-btn-follow:active {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .aim-btn-rate:hover {
+    background: rgba(245, 200, 66, 0.12);
+  }
+
+  .aim-btn-rate:active {
+    background: rgba(245, 200, 66, 0.25);
+  }
+
+  .aim-cate-chip:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.15);
+    color: rgba(255, 255, 255, 0.75);
+  }
+
+  .aim-cate-chip:active {
+    background: var(--ah-accent-soft);
+    border-color: var(--ah-accent);
+    color: var(--ah-accent);
+  }
+
+  .aim-ep-btn:hover {
+    background: var(--ah-surface-2);
+    border-color: var(--ah-border);
+    color: var(--ah-text-muted);
+  }
+
+  .aim-ep-btn:active {
+    background: var(--ah-accent-soft);
+    border-color: var(--ah-accent);
+    color: var(--ah-accent);
+  }
+}
+
+/* ============================================================
+   FILTER PAGE (sp-*) — Bổ sung mobile fixes
+   ============================================================ */
+
+@media (max-width: 768px) {
+
+  /* Filter toggle: full width trên mobile, dễ tap */
+  .sp-filter-toggle {
+    width: 100%;
+    justify-content: center;
+    min-height: 44px;
+    font-size: 14px;
+    border-radius: 10px;
+    margin-bottom: 12px;
+  }
+
+  /* Filter panel: reduce padding */
+  .sp-filters {
+    padding: 12px;
+    border-radius: 10px;
+    margin-bottom: 14px;
+  }
+
+  /* Filter row: label full-width, chips wrap bên dưới */
+  .sp-filter-row {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    margin-bottom: 14px;
+  }
+
+  .sp-filter-label {
+    width: 100%;
+    /* đẩy label lên hàng riêng */
+    flex-shrink: 0;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 2px;
+  }
+
+  /* Chips: auto width (KHÔNG stretch), wrap tự nhiên */
+  .sp-chip {
+    flex: 0 0 auto !important;
+    min-height: 38px !important;
+    padding: 7px 13px !important;
+    font-size: 13px !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Filter actions: column layout */
+  .sp-filter-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .sp-btn-apply,
+  .sp-btn-reset {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+    font-size: 15px;
+  }
+
+  /* Sort select: full width */
+  .sp-sort-select,
+  .sp-hero__input {
+    font-size: 16px;
+    /* iOS: tránh auto-zoom */
+    width: 100%;
+    min-height: 44px;
+  }
+
+  /* Results movies-list: overide cho filter page (auto-fill tốt hơn fixed 2-col) */
+  #sp-results .movies-list {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  /* Hero title */
+  .sp-hero {
+    padding: 18px 0 14px;
+  }
+
+  .sp-hero__title {
+    font-size: 20px;
+    margin-bottom: 10px;
+  }
+
+  /* Wrap padding */
+  .sp-wrap {
+    padding: 0 10px 30px;
+  }
+}
+
+/* ============================================================
+   FOOTER — Fix mobile: override đúng class .ah-footer__inner
+   BUG: trước dùng .ah-footer__grid (không tồn tại)
+   ============================================================ */
+
+@media (max-width: 768px) {
+
+  /* Main grid: 4 cột → 2 cột (brand + col) */
+  .ah-footer__inner {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 24px !important;
+    padding: 32px 16px 24px !important;
+  }
+
+  /* Logo & brand: full width, căn giữa */
+  .ah-footer__brand {
+    grid-column: 1 / -1;
+    /* span toàn bộ 2 cột */
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .ah-footer__tagline {
+    max-width: 100%;
+    text-align: center;
+  }
+
+  /* Links heading */
+  .ah-footer__heading {
+    font-size: 11px;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+  }
+
+  /* Links: compact */
+  .ah-footer__links {
+    gap: 6px;
+  }
+
+  .ah-footer__links a {
+    font-size: 12px;
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+  }
+
+  /* 2-col links: giữ 2 cột vì đã có 2 cột ở màn 768px */
+  .ah-footer__links--2col {
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 10px;
+  }
+
+  /* Domains section: span full width */
+  .ah-footer__domains {
+    grid-column: 1 / -1;
+  }
+
+  /* Bottom bar: stack dọc */
+  .ah-footer__bottom-inner {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 12px 16px;
+    gap: 6px;
+  }
+
+  /* Social buttons: đủ 44px tap */
+  .ah-footer__social-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* Footer margin */
+  .ah-footer {
+    margin-top: 24px;
+  }
+}
+
+/* ≤ 480px: footer full 1 cột */
+@media (max-width: 480px) {
+  .ah-footer__inner {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+    padding: 24px 14px 20px !important;
+  }
+
+  /* Brand không cần span (chỉ có 1 cột) */
+  .ah-footer__brand {
+    grid-column: auto;
+  }
+
+  /* Domains không cần span */
+  .ah-footer__domains {
+    grid-column: auto;
+  }
+
+  /* 2-col links trong 1 cột footer: thu về 1 cột */
+  .ah-footer__links--2col {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .ah-footer__links a {
+    font-size: 12px;
+  }
+}
+
+/* ============================================================
+   MOVIE INFO — Category chips nhỏ + Buttons icon-only
+   ============================================================ */
+
+@media (max-width: 768px) {
+
+  /* ── Category chips: nhỏ gọn hơn ── */
+  .aim-cate-chip {
+    padding: 4px 10px !important;
+    font-size: 11px !important;
+    min-height: 28px !important;
+    border-radius: 14px;
+  }
+
+  /* ── Action buttons: icon-only ──
+     Dùng font-size:0 để ẩn text node "Xem ngay"/"Theo dõi"/"Đánh giá"
+     Sau đó restore font-size cho icon span */
+  .aim-btn-watch,
+  .aim-btn-follow,
+  .aim-btn-rate {
+    font-size: 0 !important;
+    /* ẩn text node */
+    min-width: 56px !important;
+    width: 56px !important;
+    min-height: 52px !important;
+    height: 52px !important;
+    padding: 0 !important;
+    flex: 0 0 auto !important;
+    /* không grow, giữ kích thước cố định */
+    border-radius: 12px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0 !important;
+  }
+
+  .aim-btn-watch .material-icons-round,
+  .aim-btn-follow .material-icons-round,
+  .aim-btn-rate .material-icons-round {
+    font-size: 22px !important;
+    /* khôi phục icon size */
+  }
+
+  /* Canh center 3 icon buttons */
+  .aim-hero__actions {
+    justify-content: center !important;
+    gap: 10px !important;
+    flex-wrap: nowrap;
+  }
+}
+
+/* ============================================================
+   RANKING PAGE (rank-*) — inline CSS trong ranking.php
+   ============================================================ */
+
+@media (max-width: 768px) {
+
+  /* Tabs: touch target 40px */
+  .rank-tab {
+    padding: 10px 16px !important;
+    min-height: 40px !important;
+    font-size: 13px !important;
+    display: inline-flex !important;
+    align-items: center;
+  }
+
+  .day-btn {
+    padding: 8px 14px !important;
+    min-height: 38px !important;
+    display: inline-flex !important;
+    align-items: center;
+    font-size: 13px;
+  }
+
+  /* Rank item: compact vừa màn */
+  .rank-item {
+    padding: 8px !important;
+    gap: 10px !important;
+  }
+
+  .rank-pos {
+    font-size: 18px !important;
+    min-width: 28px !important;
+  }
+
+  .rank-img {
+    width: 42px !important;
+    height: 60px !important;
+  }
+
+  .rank-name {
+    font-size: 13px !important;
+  }
+
+  .rank-stat {
+    font-size: 16px !important;
+    min-width: 50px !important;
+  }
+}
+
+@media (hover: none) {
+  .rank-tab:hover {
+    background: #222 !important;
+    color: #ccc !important;
+    border-color: #444 !important;
+  }
+
+  .rank-tab.active:hover {
+    background: #c0392b !important;
+    color: #fff !important;
+  }
+
+  .rank-item:hover {
+    background: #1a1a1a !important;
+    transform: none !important;
+  }
+
+  .rank-item:active {
+    background: #252525 !important;
+  }
+
+  .day-btn:hover {
+    background: #333 !important;
+  }
+}
+
+
+/* ============================================================
+   SCHEDULE PAGE (schedule-*) — inline CSS trong schedule.php
+   Đã có @media 700px → 2 cột. Bổ sung touch + font fixes.
+   ============================================================ */
+
+@media (max-width: 480px) {
+
+  /* 2 cột ở 480px vẫn OK, nhưng schedule-grid nhiều item → scroll */
+  .schedule-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 6px !important;
+  }
+
+  /* Schedule item: tăng click area */
+  .schedule-item {
+    padding: 6px 4px !important;
+    font-size: 12px !important;
+  }
+
+  .schedule-item img {
+    width: 32px !important;
+    height: 44px !important;
+  }
+
+  .schedule-col-header {
+    font-size: 11px !important;
+    padding: 6px 4px !important;
+  }
+}
+
+
+/* ============================================================
+   FOLLOWS PAGE (ah-follows-*)
+   ============================================================ */
+
+@media (max-width: 768px) {
+
+  /* Page padding */
+  .ah-follows-page {
+    padding: 0 10px 30px;
+  }
+
+  /* Topbar: stack dọc nếu cần */
+  .ah-follows-topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 14px 0 12px;
+  }
+
+  /* Search: full width */
+  .ah-follows-search {
+    width: 100%;
+  }
+
+  .ah-follows-search input {
+    width: 100% !important;
+    font-size: 16px !important;
+    /* iOS: no zoom */
+    min-height: 40px;
+    box-sizing: border-box;
+  }
+
+  /* Sort tabs: scroll ngang */
+  .ah-follows-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+    gap: 6px;
+  }
+
+  .ah-follows-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Controls: full width */
+  .ah-follows-controls {
+    width: 100%;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* Title */
+  .ah-follows-title {
+    font-size: 17px;
+  }
+}
+
+
+/* ============================================================
+   USER PROFILE PAGE (up-*)
+   modern.css đã xử lý 600px. Bổ sung padding ≤768px.
+   ============================================================ */
+
+@media (max-width: 768px) {
+
+  .up-card {
+    margin: 0 -10px;
+    /* full bleed trên mobile */
+  }
+
+  .up-btn {
+    min-height: 40px;
+    padding: 8px 16px;
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
+
+/* ============================================================
+   HISTORY PAGE (ah-hcard)
+   modern.css đã xử lý 480px. Bổ sung 768px touch targets.
+   ============================================================ */
+
+@media (max-width: 768px) {
+
+  .ah-hcard {
+    gap: 10px;
+    border-radius: 8px;
+  }
+
+  /* Touch: hcard click area */
+  .ah-hcard__info-link {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+
+  .ah-hcard__del {
+    min-width: 40px;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+
+/* ============================================================
+   SEARCH PAGE (search results)
+   Dùng movies-list → đã cover. Bổ sung search header.
+   ============================================================ */
+
+@media (max-width: 768px) {
+
+  /* Search page header */
+  .search-page,
+  .search-result-page {
+    padding: 0 10px 30px;
+  }
+
+  /* Search sort/filter */
+  .search-sort {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+}
+
+/* ============================================================
+   NAVBAR MOBILE — Nav Equal Width + Search Modal
+   ============================================================ */
+
+/* ─── Desktop: ẩn search trigger + modal ─── */
+.ah-search-trigger {
+  display: none !important;
+}
+
+#mobile-search-modal {
+  display: none !important;
+}
+
+/* ─── Mobile ≤768px ─── */
+@media (max-width: 768px) {
+
+  /* 1. Navbar top: flex layout (bỏ grid 3-col vì ẩn search 1fr) */
+  .ah-navbar__top {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding: 6px 12px !important;
+    gap: 8px !important;
+    grid-template-columns: unset !important;
+  }
+
+  /* 2. Ẩn desktop search form */
+  .ah-search {
+    display: none !important;
+  }
+
+  /* 3. Hiện search trigger icon */
+  .ah-search-trigger {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    flex-shrink: 0;
+    border-radius: 10px;
+    background: var(--ah-surface-2);
+    border: 1px solid var(--ah-border);
+    color: var(--ah-text-muted);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    order: -1;
+    /* trước avatar/notification */
+  }
+
+  .ah-search-trigger:active,
+  .ah-search-trigger.msm-open {
+    background: var(--ah-accent-soft) !important;
+    color: var(--ah-accent) !important;
+    border-color: var(--ah-accent) !important;
+  }
+
+  /* 4. Nav links: chia đều 100% width (không scroll ngang) */
+  .ah-nav__links {
+    display: flex !important;
+    width: 100% !important;
+    overflow: visible !important;
+    overflow-x: visible !important;
+    padding: 0 !important;
+  }
+
+  .ah-nav-link {
+    flex: 1 1 0 !important;
+    /* base=0 - tất cả bằng nhau bất kể content */
+    justify-content: center !important;
+    align-items: center !important;
+    padding: 0 !important;
+    min-width: 0 !important;
+    overflow: hidden;
+  }
+
+  /* 5. Mobile Search Modal overlay */
+  #mobile-search-modal {
+    display: flex !important;
+    /* luôn display:flex, ẩn bằng opacity */
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 10, 18, 0.90);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    z-index: 9998;
+    flex-direction: column;
+    align-items: stretch;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+
+  #mobile-search-modal.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* 6. Modal panel: slide từ trên xuống */
+  .msm-panel {
+    background: var(--ah-surface);
+    border-bottom: 1px solid var(--ah-border);
+    padding: 12px 16px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transform: translateY(-20px);
+    transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+    max-height: 85dvh;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  }
+
+  #mobile-search-modal.open .msm-panel {
+    transform: translateY(0);
+  }
+
+  /* 7. Panel header */
+  .msm-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .msm-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ah-text-muted);
+  }
+
+  .msm-title .material-icons-round {
+    font-size: 18px;
+    color: var(--ah-accent);
+  }
+
+  .msm-close {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: var(--ah-surface-2);
+    border: 1px solid var(--ah-border);
+    color: var(--ah-text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .msm-close:active {
+    background: rgba(231, 76, 60, 0.15);
+    color: #e74c3c;
+  }
+
+  /* 8. Search input row */
+  .msm-form-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--ah-surface-2);
+    border: 1.5px solid var(--ah-border);
+    border-radius: 12px;
+    padding: 0 12px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  .msm-form-wrap:focus-within {
+    border-color: var(--ah-accent);
+    box-shadow: 0 0 0 3px var(--ah-accent-glow);
+  }
+
+  .msm-form-icon {
+    color: var(--ah-text-muted);
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+
+  .msm-input {
+    flex: 1;
+    min-width: 0;
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--ah-text);
+    font-size: 16px !important;
+    /* iOS: tránh auto-zoom */
+    font-family: var(--ah-font);
+    padding: 13px 0;
+  }
+
+  .msm-input::placeholder {
+    color: var(--ah-text-dim);
+  }
+
+  .msm-clear {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--ah-surface);
+    border: 1px solid var(--ah-border);
+    color: var(--ah-text-muted);
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .msm-clear:active {
+    background: var(--ah-surface-2);
+  }
+
+  .msm-clear .material-icons-round {
+    font-size: 15px;
+  }
+
+  /* 9. Results list (kế thừa ah-sp__* styles từ modern.css) */
+  .msm-results {
+    overflow-y: auto;
+    max-height: calc(85dvh - 130px);
+    -webkit-overflow-scrolling: touch;
+    border-radius: 8px;
+    overflow-x: hidden;
+  }
+
+  /* Reuse ah-sp__* styles cho results */
+  .msm-results .ah-sp__item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    text-decoration: none;
+    color: var(--ah-text);
+    border-bottom: 1px solid var(--ah-border);
+    transition: background 0.1s;
+  }
+
+  .msm-results .ah-sp__item:active {
+    background: var(--ah-surface-2);
+  }
+
+  .msm-results .ah-sp__poster {
+    width: 42px;
+    height: 58px;
+    object-fit: cover;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+
+  .msm-results .ah-sp__name {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 3px;
+  }
+
+  .msm-results .ah-sp__name mark {
+    background: transparent;
+    color: var(--ah-accent);
+    font-weight: 700;
+  }
+
+  .msm-results .ah-sp__meta {
+    font-size: 11px;
+    color: var(--ah-text-muted);
+    display: flex;
+    gap: 6px;
+  }
+
+  .msm-results .ah-sp__score {
+    color: #f1c40f;
+  }
+
+  .msm-results .ah-sp__footer {
+    display: block;
+    padding: 12px 16px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--ah-accent);
+    text-decoration: none;
+    border-top: 1px solid var(--ah-border);
+    background: var(--ah-surface-2);
+  }
+
+  .msm-results .ah-sp__empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 24px;
+    color: var(--ah-text-muted);
+    font-size: 13px;
+  }
+
+  /* Skeleton loading */
+  .msm-results .ah-sp__skeleton {
+    height: 58px;
+    background: linear-gradient(90deg, var(--ah-surface-2) 25%, var(--ah-surface) 50%, var(--ah-surface-2) 75%);
+    background-size: 200% 100%;
+    animation: msmSkel 1.2s ease-in-out infinite;
+    border-radius: 6px;
+    margin-bottom: 6px;
+  }
+
+  @keyframes msmSkel {
+    0% {
+      background-position: 200% 0;
+    }
+
+    100% {
+      background-position: -200% 0;
+    }
+  }
+}
+
+/* ============================================================
+   CATEGORY DROPDOWN #drop-down-1 — Mobile Fix
+   BUG: position:absolute bị clip bởi parent overflow
+   FIX: position:fixed dưới navbar, full-width, scrollable
+   ============================================================ */
+
+/* Desktop: ẩn trigger + modal hoàn toàn */
+
+@media (max-width: 768px) {
+
+  /* ── Dropdown: Convert from absolute → fixed on mobile ── */
+  #drop-down-1 {
+    position: fixed !important;
+    /* 
+      Navbar height mobile ≈ 88px:
+      top-bar(46px) + nav-row(40px) ≈ 86px → safe 90px
+    */
+    top: 90px !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-height: calc(100dvh - 90px) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    border-radius: 0 !important;
+    /* flush với màn hình */
+    z-index: 9997 !important;
+    /* trên mọi thứ trừ msm */
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7) !important;
+  }
+
+  /* ── Tab nav: 2 pills chia đều full width ── */
+  #drop-down-1 .tab-links {
+    padding: 10px 12px 8px !important;
+    gap: 6px !important;
+  }
+
+  #drop-down-1 .item-tab-link {
+    flex: 1 !important;
+    justify-content: center !important;
+    min-height: 40px !important;
+    font-size: 13px !important;
+  }
+
+  /* ── Category grid: 3 cột (từ 4) ── */
+  #drop-down-1 .tab-content {
+    padding: 10px 12px 12px !important;
+  }
+
+  #drop-down-1 .tab-content .flex.flex-wrap {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 5px !important;
+  }
+
+  #drop-down-1 .tab-content a {
+    padding: 8px 10px !important;
+    font-size: 12.5px !important;
+    min-height: 36px !important;
+    justify-content: center !important;
+    text-align: center !important;
+  }
+
+  /* ── Quicklinks bar: 2×2 grid ── */
+  .dd-quicklinks {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 6px !important;
+    padding: 8px 12px 14px !important;
+  }
+
+  #drop-down-1 .dd-quicklinks a {
+    justify-content: center !important;
+    min-height: 40px !important;
+    font-size: 12px !important;
+  }
+}
+
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  HOME PAGE — Main Content + Sidebar Mobile                 ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+
+@media (max-width: 768px) {
+
+  /* ── 1. HOME WRAPPER ── */
+  .ah-home {
+    padding: 0 8px !important;
+  }
+
+  /* ── 2. SINGLE COLUMN: main → sidebar ── */
+  .ah-home__body {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0 !important;
+  }
+
+  /* ── 3. MAIN COLUMN ── */
+  .ah-main {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* ── 4. Section header: compact ── */
+  .ah-section-header {
+    padding: 14px 0 10px !important;
+    gap: 8px !important;
+  }
+
+  .ah-section-title {
+    font-size: 15px !important;
+    white-space: nowrap;
+  }
+
+  .ah-section-link {
+    font-size: 12px !important;
+    white-space: nowrap;
+    color: var(--ah-accent);
+  }
+
+  /* ── 5. Genre chips: horizontal scroll ── */
+  .ah-genre-chips {
+    display: flex !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 5px !important;
+    flex-wrap: nowrap !important;
+    padding-bottom: 2px;
+  }
+
+  .ah-genre-chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ah-genre-chip {
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
+    padding: 5px 11px !important;
+    font-size: 12px !important;
+    height: 30px !important;
+    min-height: unset !important;
+    display: inline-flex !important;
+    align-items: center !important;
+  }
+
+  /* ── 6. SIDEBAR ── */
+  .ah-sidebar {
+    position: relative !important;
+    top: auto !important;
+    width: 100% !important;
+    gap: 10px !important;
+    padding: 10px 0 16px !important;
+  }
+
+  /* ── 7. Sidebar card wrapper ── */
+  .ah-sidebar-card {
+    border-radius: 10px !important;
+    overflow: hidden;
+  }
+
+  .ah-sidebar-card__header {
+    padding: 10px 14px !important;
+    font-size: 13px !important;
+  }
+
+  /* ── 8. TRENDING LIST → horizontal scroll poster cards ── */
+  .ah-trend-list {
+    display: flex !important;
+    flex-direction: row !important;
+    overflow-x: auto !important;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 12px 12px 14px !important;
+    gap: 10px !important;
+  }
+
+  .ah-trend-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ah-trend-list li {
+    flex-shrink: 0 !important;
+    width: 90px !important;
+    border-bottom: none !important;
+  }
+
+  /* Trend item: vertical card layout */
+  .ah-trend-item {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 6px !important;
+    padding: 0 !important;
+    border-bottom: none !important;
+    width: 90px;
+    position: relative;
+  }
+
+  /* Rank badge: overlay trên poster */
+  .ah-trend-item__num {
+    position: absolute !important;
+    z-index: 2;
+    top: 5px !important;
+    left: 5px !important;
+    min-width: unset !important;
+    width: 20px;
+    background: var(--ah-accent);
+    color: #fff;
+    border-radius: 4px;
+    font-size: 11px !important;
+    font-weight: 800 !important;
+    text-align: center !important;
+    line-height: 20px;
+  }
+
+  /* Top 3 rank badge colors */
+  .ah-trend-list li:nth-child(1) .ah-trend-item__num {
+    background: #f1c40f;
+    color: #1a1a1a;
+  }
+
+  .ah-trend-list li:nth-child(2) .ah-trend-item__num {
+    background: #bdc3c7;
+    color: #1a1a1a;
+  }
+
+  .ah-trend-list li:nth-child(3) .ah-trend-item__num {
+    background: #cd7f32;
+    color: #fff;
+  }
+
+  /* Poster */
+  .ah-trend-item__poster {
+    width: 90px !important;
+    height: 128px !important;
+    border-radius: 7px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .ah-trend-item__poster img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    display: block;
+  }
+
+  /* Movie name: 2-line clamp */
+  .ah-trend-item__body {
+    width: 90px;
+    gap: 2px !important;
+  }
+
+  .ah-trend-item__name {
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    line-height: 1.35 !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    color: var(--ah-text);
+  }
+
+  .ah-trend-item__ep {
+    font-size: 10px !important;
+    color: var(--ah-text-dim) !important;
+  }
+
+  /* ── 9. EPISODE LIST → 2-column compact grid ── */
+  .ah-ep-list {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: var(--ah-border);
+    gap: 1px !important;
+  }
+
+  .ah-ep-list li {
+    background: var(--ah-surface);
+    list-style: none;
+  }
+
+  .ah-ep-item {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 3px !important;
+    padding: 9px 10px !important;
+    border-bottom: none !important;
+    min-height: 54px;
+    text-decoration: none;
+    display: flex !important;
+  }
+
+  .ah-ep-item__name {
+    font-size: 11.5px !important;
+    font-weight: 600 !important;
+    line-height: 1.3;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    color: var(--ah-text);
+  }
+
+  .ah-ep-item__badge {
+    font-size: 10px !important;
+    padding: 1px 6px !important;
+    border-radius: 3px;
+    white-space: nowrap;
+    display: inline-block;
+    width: fit-content;
+  }
+
+  /* ── 10. Reload button sizing ── */
+  .ah-ep-reload {
+    min-width: 32px;
+    min-height: 32px;
+    justify-content: center;
+    align-items: center;
+    display: flex;
+    margin-left: auto;
+    cursor: pointer;
+  }
+}
+
+/* ── 375px và nhỏ hơn: squeeze thêm ── */
+@media (max-width: 375px) {
+  .ah-home {
+    padding: 0 6px !important;
+  }
+
+  .ah-trend-item__poster {
+    width: 80px !important;
+    height: 114px !important;
+  }
+
+  .ah-trend-item,
+  .ah-trend-item__body,
+  .ah-trend-list li {
+    width: 80px !important;
+  }
+}
