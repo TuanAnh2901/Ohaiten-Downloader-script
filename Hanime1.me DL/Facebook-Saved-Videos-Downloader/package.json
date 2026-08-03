@@ -1,0 +1,34 @@
+{
+  "name": "fb-saved-dl",
+  "version": "0.1.0",
+  "description": "CLI to download Facebook saved videos",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "fb-saved-dl": "./bin/fb-saved-dl.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "commander": "^12.0.0",
+    "playwright": "^1.59.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "tsx": "^4.16.0",
+    "esbuild": "^0.23.0",
+    "vitest": "^1.6.0",
+    "@playwright/test": "^1.59.0",
+    "@types/node": "^20.14.0"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ]
+}
