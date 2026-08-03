@@ -428,6 +428,33 @@ describe('downloadAll', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 30000);
+
+  it('re-run: already-downloaded (marker) videos are skipped and recorded in the report', async () => {
+    const dir = tempDir();
+    try {
+      const { spawnFn, procs } = makeFakeSpawn();
+      const { launchFn } = fakeLaunch();
+      let p = downloadAll(baseOpts(dir, { spawnFn, launchFn }));
+      await drainPool(procs, 10);
+      expect((await p).downloaded).toBe(10);
+
+      // Drop run-1 report so readReport finds only run-2's file.
+      rmSync(join(dir, 'reports'), { recursive: true, force: true });
+
+      // Second run: every video has a .done.json marker → all skipped.
+      const { spawnFn: spawn2, procs: procs2 } = makeFakeSpawn();
+      const result = await downloadAll(baseOpts(dir, { spawnFn: spawn2, launchFn }));
+      expect(result).toEqual({ downloaded: 0, failed: 0, skipped: 10 });
+      expect(procs2).toHaveLength(0);
+
+      const report = readReport(dir);
+      expect(report.summary).toEqual({ downloaded: 0, failed: 0, skipped: 10 });
+      expect(report.skipped).toHaveLength(10);
+      expect(report.skipped.every((s) => s.reason === 'already downloaded')).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30000);
 });
 
 describe('downloadCollection', () => {
