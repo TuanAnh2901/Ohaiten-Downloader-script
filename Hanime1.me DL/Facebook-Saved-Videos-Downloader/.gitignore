@@ -1,0 +1,10 @@
+Facebook-cookies.txt
+*.cookies.txt
+playwright-profile/
+downloads/
+.omo/evidence/
+*.done.json
+dist/
+node_modules/
+reports/
+spike/*.mp4
