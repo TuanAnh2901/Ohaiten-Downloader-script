@@ -9,11 +9,15 @@ import {
   EXIT_PARTIAL,
   EXIT_FATAL,
   EXIT_NOTHING,
-  FETCH_GRAPHQL,
   FbSavedCliError,
   NO_VIDEOS,
   exitCodeFor,
 } from './errors.js';
+import {
+  downloadAll as runDownloadAll,
+  downloadCollection as runDownloadCollection,
+  listCollectionsService,
+} from './orchestrator.js';
 
 // ---------------------------------------------------------------------------
 // Public types — the CLI layer talks to scrape services through this seam so
@@ -256,20 +260,12 @@ export async function run(
   }
 }
 
-// Scrape services are not wired yet. The parsing/confirmation/exit-code layer
-// is complete and tested with fake services; the real implementation lands in
-// Task 16 (collections/items/download/orchestrator).
-const notWired = async (): Promise<never> => {
-  throw new FbSavedCliError(
-    FETCH_GRAPHQL,
-    'scrape services not yet wired — run after integration',
-  );
-};
-
+// Real scrape services (Task 16). Each call launches its own authenticated
+// browser session (T15 seam design) and closes it when done.
 export const defaultServices: CliServices = {
-  listCollections: notWired,
-  downloadAll: notWired,
-  downloadCollection: notWired,
+  listCollections: (cookiesFile) => listCollectionsService(cookiesFile),
+  downloadAll: (opts) => runDownloadAll(opts),
+  downloadCollection: (collectionId, opts) => runDownloadCollection(collectionId, opts),
 };
 
 export const defaultIo: CliIo = {
