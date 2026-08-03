@@ -155,7 +155,7 @@ describe('buildYtDlpArgs', () => {
       '--cookies',
       '/tmp/c.txt',
       '-f',
-      'bv*[height<=1080]+ba/b[height<=1080]/b',
+      'bv*[height<=720]+ba/b[height<=720]/b',
       '--merge-output-format',
       'mp4',
       '--remux-video',
@@ -176,7 +176,7 @@ describe('buildYtDlpArgs', () => {
       'https://fb.com/v',
     ]);
     expect(args[args.length - 1]).toBe('https://fb.com/v');
-    expect(args).toContain('bv*[height<=1080]+ba/b[height<=1080]/b');
+    expect(args).toContain('bv*[height<=720]+ba/b[height<=720]/b');
   });
 });
 

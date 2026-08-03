@@ -269,3 +269,9 @@
 - Test: download.test.ts arg-builder expectations updated to the new string (2 spots). 122/122 pass, tsc clean, build exit 0.
 - LIVE E2E PASSED: node bin/fb-saved-dl.js download-collection 207833460677908 --cookies Facebook-cookies.txt --yes --jobs 2 -> EXIT=0, 1 downloaded 0 failed. File on disk: "downloads/Trò chơi/Bộ đội hủy diệt Grak - Nata.mp4" 503MB + .done.json. Evidence: .omo/evidence/task-18-e2e-download2.log.
 - NOTE: PATH yt-dlp is stable 2025.06.30 (stale per README); the format fix works on it too. Proven nightly stays at spike/yt-dlp.exe 2026.07.23.234303.
+
+## [2026-08-03] Default resolution 1080p -> 720p
+- User request: "default resolution là 720p thôi" (smaller files, enough quality).
+- src/download.ts buildYtDlpArgs format string: `bv*[height<=1080]+ba/b[height<=1080]/b` -> `bv*[height<=720]+ba/b[height<=720]/b`. Trailing `/b` muxed fallback (Task 18b live fix) kept intact.
+- test/download.test.ts arg-builder assertions updated (2 spots). README had no resolution mention — no change.
+- Verified: npm test 122/122, tsc --noEmit clean, npm run build exit 0, live dry-run plan shows `-f bv*[height<=720]+ba/b[height<=720]/b`.
