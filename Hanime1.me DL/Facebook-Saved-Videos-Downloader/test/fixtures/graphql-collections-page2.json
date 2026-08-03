@@ -1,0 +1,56 @@
+{
+  "data": {
+    "viewer": {
+      "saver_info": {
+        "saver_content_collections": {
+          "edges": [
+            {
+              "cursor": "lr-c6",
+              "node": {
+                "id": "530887945039123",
+                "collection_title": "Game",
+                "participant_count": 0
+              }
+            },
+            {
+              "cursor": "lr-c7",
+              "node": {
+                "id": "264183241709596",
+                "collection_title": "Ăn cả thế giới",
+                "participant_count": 0
+              }
+            },
+            {
+              "cursor": "lr-c8",
+              "node": {
+                "id": "189725819155339",
+                "collection_title": "TV & Phim ảnh",
+                "participant_count": 0
+              }
+            },
+            {
+              "cursor": "lr-c9",
+              "node": {
+                "id": "207833460677908",
+                "collection_title": "Trò chơi",
+                "participant_count": 0
+              }
+            },
+            {
+              "cursor": "lr-c10",
+              "node": {
+                "id": "375610470566872",
+                "collection_title": "Sản phẩm",
+                "participant_count": 0
+              }
+            }
+          ],
+          "page_info": {
+            "end_cursor": "lr-c10",
+            "has_next_page": false
+          }
+        }
+      }
+    }
+  }
+}
