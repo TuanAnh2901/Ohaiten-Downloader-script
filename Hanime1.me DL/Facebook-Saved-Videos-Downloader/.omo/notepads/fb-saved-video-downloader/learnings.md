@@ -152,3 +152,15 @@
 - Test gotcha: readReport() finds FIRST 'report-*' file in readdir order — with 2 runs in one dir it can return the stale report. rmSync the reports dir between runs.
 - Deliberate non-change: index.ts reportResult hand-formats the [DONE] string instead of calling Report.summaryText() — identical output, both tested; index.ts has DownloadResult counts not a Report instance, wiring adds coupling for zero behavior change.
 - Deliberate non-change: reports at {outputDir}/reports/ not cwd reports/ (T16 decision, ratified — decisions.md).
+
+## [2026-08-03] Task 18 E2E FAILED — GraphQL fetch blocked (3/3, one attempt each)
+- README.md written (deliverable A complete, mirrors AnimehayCLI structure, English only). Commit carries README + this record.
+- E2E (deliverable B) BLOCKED: all 3 live commands failed identically, exit 1, `page.evaluate: TypeError: Failed to fetch` at the in-page fetch (postGraphQL, <anonymous>:2:25). One attempt each per plan no-retry rule; budget exhausted at 3.
+  1. list-collections — SAME failure. Live collection counts NOT captured.
+  2. download-collection 264183241709596 (An ca the gioi, spike-smallest, count 1) --yes — SAME failure. No mp4 produced; downloads/ empty.
+  3. download-all --dry-run — SAME failure. yt-dlp plan NOT captured.
+- Auth NOT the problem: all 3 runs passed assertLoggedIn (no login redirect), cookie file healthy (11 lines, c_user/xs/presence/fr intact). TCP facebook.com:443 reachable (not a network outage).
+- CONTRADICTION: spike T3 re-run TODAY proved the identical in-page fetch flow (36 probes OK), T4 yt-dlp worked, T9 /saved navigation worked. Hours later the same flow is dropped 3/3.
+- REAL BUG FOUND (recorded, NOT fixed — task rule): queryGraphQL retry loop does NOT catch transport-level rejection. postGraphQL throws (page.evaluate fetch reject) -> escapes attempt 0 immediately, zero retries, raw unwrapped playwright error printed by index.ts catch-all (not a clean FETCH_GRAPHQL message). Retry loop only covers HTTP>=400 / non-JSON / error payload. Directly contradicts spike lesson "wrap FB metadata calls w/ 1 retry". FOLLOW-UP TASK: try/catch postGraphQL inside the retry loop + wrap error as FbSavedCliError(FETCH_GRAPHQL).
+- UNRESOLVED ROOT CAUSE: likely FB WAF now dropping /api/graphql/ POSTs for this session/IP (rate-limit flag after 36-probe T3 + 3 more today) or endpoint blocked for this browser fingerprint. Cannot distinguish without more live probes (forbidden).
+- USER ACTION NEEDED before re-running E2E: re-export fresh cookies (or wait out the rate limit window), then re-run task-18 E2E commands (evidence log .omo/evidence/task-18-e2e.log already has the 3 failure records).
