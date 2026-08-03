@@ -1,0 +1,13 @@
+# Netscape HTTP Cookie File
+# http://curl.haxx.se/rfc/cookie_spec.html
+.facebook.com	TRUE	/	TRUE	1817260283	datr	FAKEdatr
+.facebook.com	TRUE	/	TRUE	1817260283	sb	FAKEsb
+.facebook.com	TRUE	/	TRUE	1817260283	ps_l	1
+.facebook.com	TRUE	/	TRUE	1817260283	ps_n	1
+.facebook.com	TRUE	/	TRUE	0	ar_debug	1
+.facebook.com	TRUE	/	TRUE	1817260283	locale	vi_VN
+.facebook.com	TRUE	/	TRUE	1817260283	c_user	123456789012345
+.facebook.com	TRUE	/	TRUE	1817260283	wd	100x100
+.facebook.com	TRUE	/	TRUE	1817260283	fr	FAKE
+.facebook.com	TRUE	/	TRUE	1817260283	xs	FAKE
+.facebook.com	TRUE	/	TRUE	0	presence	FAKE

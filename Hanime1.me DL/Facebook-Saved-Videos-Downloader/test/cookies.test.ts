@@ -6,17 +6,19 @@ import {
   toCookieHeader,
 } from '../src/cookies.js';
 
-// Live fixture: read the real Netscape cookie file so tests stay valid.
+// Synthetic fixture: deterministic Netscape cookie file (never depends on the
+// user's live Facebook-cookies.txt, which changes on every re-export).
 const FIXTURE = readFileSync(
-  new URL('../Facebook-cookies.txt', import.meta.url),
+  new URL('./fixtures/cookies.txt', import.meta.url),
   'utf-8',
 );
 
 describe('parseNetscapeFile', () => {
-  it('parses exactly 11 real cookies from the fixture (15 lines minus 4 comment/blank)', () => {
+  it('parses exactly 11 cookies from the fixture (13 lines minus 2 comment)', () => {
     const cookies = parseNetscapeFile(FIXTURE);
     expect(cookies).toHaveLength(11);
-    expect(cookies.map((c) => c.name)).toEqual([
+    // Order-independent: the live cookie file can reorder, the fixture is fixed.
+    expect(cookies.map((c) => c.name).sort()).toEqual([
       'datr',
       'sb',
       'ps_l',
@@ -28,7 +30,7 @@ describe('parseNetscapeFile', () => {
       'fr',
       'xs',
       'presence',
-    ]);
+    ].sort());
   });
 
   it('handles the #HttpOnly_ domain prefix as an httpOnly flag', () => {
@@ -63,7 +65,7 @@ describe('toPlaywrightCookies', () => {
 describe('toCookieHeader', () => {
   it('joins name=value pairs with "; "', () => {
     const header = toCookieHeader(parseNetscapeFile(FIXTURE));
-    expect(header).toContain('c_user=100043537656175');
+    expect(header).toContain('c_user=123456789012345');
     expect(header).toContain('xs=');
     expect(header.split('; ')).toHaveLength(11);
   });
