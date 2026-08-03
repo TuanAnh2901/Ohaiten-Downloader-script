@@ -177,3 +177,8 @@
 - NOT auth: assertLoggedIn passed again (no login redirect), cookies 11 lines intact. TCP reachable.
 - NEXT: user must re-export fresh cookies (or wait a longer FB flag window — hours, not minutes), THEN re-run probe #1. If it still fails with fresh cookies, investigate FB-side /api/graphql/ endpoint change (WAF policy, automation fingerprint).
 - Evidence: .omo/evidence/task-18-e2e2.log (both probe attempts: bad-arg + fixed-arg).
+
+## [2026-08-03] vitest flake fix
+- Intermittent "Failed Suites 1" (Test Files 1 failed | 11 passed, but Tests 124/124 passed): suite-level teardown error, not a test failure. 5 test files launch chromium in parallel; launch/close contention at teardown raced.
+- Fix: vitest.config.ts `fileParallelism: false` — test FILES run sequentially (workers still exist). 4 consecutive full-suite runs: 12/12 files, 124/124 tests, exit 0, zero Failed Suites. tsc clean, build exit 0. Commit: test: serialize vitest files (chromium contention flake).
+- Same class as prior spawn-order race (test/download.test.ts pool) — parallel test-infra races, serialized or mapped via unique identifiers.
