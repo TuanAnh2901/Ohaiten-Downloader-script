@@ -9,7 +9,7 @@ import {
   paginateAllSaves,
   queryGraphQL,
 } from '../src/graphql.js';
-import { PAGINATION_LOOP } from '../src/errors.js';
+import { PAGINATION_LOOP, FETCH_GRAPHQL, FbSavedCliError } from '../src/errors.js';
 
 const P1 = readFileSync(
   fileURLToPath(new URL('./fixtures/graphql-items-page1.json', import.meta.url)),
@@ -131,6 +131,25 @@ describe('paginateAllSaves', () => {
     expect(calls).toBeGreaterThanOrEqual(2);
     expect(collectRelayEdges(data)).toHaveLength(5);
   }, 15000);
+
+  it('retries with backoff on transport failure (route.abort) then throws FETCH_GRAPHQL', async () => {
+    let calls = 0;
+    await mockGraphQL(async (route) => {
+      calls++;
+      await route.abort(); // in-page fetch REJECTS — the E2E failure mode
+    });
+
+    const err = await queryGraphQL(page, {
+      docId: ALL_SAVES_DOC_ID,
+      variables: { content_filter: [], count: 10, cursor: null, scale: 1, use_case: 'SAVE_DEFAULT' },
+      friendlyName: ALL_SAVES_FRIENDLY_NAME,
+    }).catch((e: unknown) => e);
+
+    expect(calls).toBe(4); // MAX_RETRIES + 1
+    expect(err).toBeInstanceOf(FbSavedCliError);
+    expect((err as { code: string }).code).toBe(FETCH_GRAPHQL);
+    expect((err as Error).message).toContain('transport:');
+  }, 30000);
 
   it('throws PAGINATION_LOOP when end_cursor repeats with has_next_page', async () => {
     // Same fixture every time: end_cursor c5 + has_next_page true forever.

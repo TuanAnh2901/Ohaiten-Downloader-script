@@ -117,7 +117,16 @@ export async function queryGraphQL(
     if (attempt > 0) {
       await sleep(Math.min(BASE_DELAY_MS * 2 ** (attempt - 1), MAX_DELAY_MS));
     }
-    const { status, text } = await postGraphQL(page, opts);
+    let raw: RawResponse;
+    try {
+      raw = await postGraphQL(page, opts);
+    } catch (err) {
+      // In-page fetch rejection (network drop / WAF reset) must retry too,
+      // not escape attempt 0 — the retry contract's original blind spot.
+      lastError = `transport: ${err instanceof Error ? err.message : String(err)}`;
+      continue;
+    }
+    const { status, text } = raw;
     if (status >= 400) {
       lastError = `HTTP ${status}`;
       continue;

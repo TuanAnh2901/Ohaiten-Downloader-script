@@ -164,3 +164,8 @@
 - REAL BUG FOUND (recorded, NOT fixed — task rule): queryGraphQL retry loop does NOT catch transport-level rejection. postGraphQL throws (page.evaluate fetch reject) -> escapes attempt 0 immediately, zero retries, raw unwrapped playwright error printed by index.ts catch-all (not a clean FETCH_GRAPHQL message). Retry loop only covers HTTP>=400 / non-JSON / error payload. Directly contradicts spike lesson "wrap FB metadata calls w/ 1 retry". FOLLOW-UP TASK: try/catch postGraphQL inside the retry loop + wrap error as FbSavedCliError(FETCH_GRAPHQL).
 - UNRESOLVED ROOT CAUSE: likely FB WAF now dropping /api/graphql/ POSTs for this session/IP (rate-limit flag after 36-probe T3 + 3 more today) or endpoint blocked for this browser fingerprint. Cannot distinguish without more live probes (forbidden).
 - USER ACTION NEEDED before re-running E2E: re-export fresh cookies (or wait out the rate limit window), then re-run task-18 E2E commands (evidence log .omo/evidence/task-18-e2e.log already has the 3 failure records).
+
+## [2026-08-03] Task 18 retry: transport-retry fix
+- BUG FIX (src/graphql.ts): queryGraphQL retry loop now try/catch-es postGraphQL — transport-level in-page fetch rejections (network drop / WAF reset, "TypeError: Failed to fetch") retry with the existing 2s/4s/8s backoff instead of escaping attempt 0. lastError prefixed `transport:`; exhausted -> clean FbSavedCliError(FETCH_GRAPHQL).
+- REGRESSION TEST (test/graphql.test.ts): route.abort() makes in-page fetch reject; asserts 4 route calls (MAX_RETRIES+1), FbSavedCliError instance, code FETCH_GRAPHQL, message contains 'transport:'. Suite 123 -> 124. Test pays ~14s backoff (accepted).
+- playwright-profile/ deleted before probe (disposable, gitignored).
