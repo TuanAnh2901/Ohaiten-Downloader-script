@@ -169,3 +169,11 @@
 - BUG FIX (src/graphql.ts): queryGraphQL retry loop now try/catch-es postGraphQL — transport-level in-page fetch rejections (network drop / WAF reset, "TypeError: Failed to fetch") retry with the existing 2s/4s/8s backoff instead of escaping attempt 0. lastError prefixed `transport:`; exhausted -> clean FbSavedCliError(FETCH_GRAPHQL).
 - REGRESSION TEST (test/graphql.test.ts): route.abort() makes in-page fetch reject; asserts 4 route calls (MAX_RETRIES+1), FbSavedCliError instance, code FETCH_GRAPHQL, message contains 'transport:'. Suite 123 -> 124. Test pays ~14s backoff (accepted).
 - playwright-profile/ deleted before probe (disposable, gitignored).
+
+## [2026-08-03] Task 18 retry: probe #1 FAILED (fix validated, block persists)
+- Probe #1 (list-collections, fresh playwright-profile/ deleted) FAILED, exit 1. STOPPED per rules — download-collection + dry-run NOT attempted.
+- Error (NOW CLEAN, was raw): `[ERROR] GraphQL request failed after 4 attempts: transport: page.evaluate: TypeError: Failed to fetch` — fix proven live: 4 attempts with 2s/4s/8s backoff, wrapped FbSavedCliError(FETCH_GRAPHQL).
+- CONCLUSION: transport rejection persists across 4 attempts + 14s backoff -> NOT a per-minute transient WAF window. Persistent block of in-page fetch to /api/graphql/ from this session/browser fingerprint (likely longer FB flag after 36-probe spike + 5 runs today).
+- NOT auth: assertLoggedIn passed again (no login redirect), cookies 11 lines intact. TCP reachable.
+- NEXT: user must re-export fresh cookies (or wait a longer FB flag window — hours, not minutes), THEN re-run probe #1. If it still fails with fresh cookies, investigate FB-side /api/graphql/ endpoint change (WAF policy, automation fingerprint).
+- Evidence: .omo/evidence/task-18-e2e2.log (both probe attempts: bad-arg + fixed-arg).
