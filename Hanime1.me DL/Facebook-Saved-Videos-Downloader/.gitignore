@@ -8,3 +8,4 @@ dist/
 node_modules/
 reports/
 spike/*.mp4
+spike/yt-dlp.exe
