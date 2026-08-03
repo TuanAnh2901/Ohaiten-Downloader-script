@@ -102,6 +102,21 @@ function cookiesArg(proc: FakeChild): string {
   return proc.args[i + 1];
 }
 
+/**
+ * Spawn order is nondeterministic (workers hit async copyFile before spawn),
+ * so locate a proc by its unique URL instead of array position.
+ */
+function procFor(procs: FakeChild[], videoId: number): FakeChild {
+  const url = `https://www.facebook.com/watch/?v=${videoId}`;
+  const p = procs.find((x) => x.args.includes(url));
+  if (!p) {
+    throw new Error(
+      `no proc for ${url}; got: ${procs.map((x) => x.args.join(' ')).join(' | ')}`,
+    );
+  }
+  return p;
+}
+
 // --- fixtures ----------------------------------------------------------------
 
 let dir: string;
@@ -310,9 +325,9 @@ describe('error handling', () => {
     const items = [item(0), item(1), item(2)];
     const p = downloadMany(items, { jobs: 3, cookiesFile: master, spawnFn });
     const spawned = await waitForProcs(procs, 3);
-    spawned[0].succeed();
-    spawned[1].failWith('ERROR: boom\n');
-    spawned[2].succeed();
+    procFor(spawned, 0).succeed();
+    procFor(spawned, 1).failWith('ERROR: boom\n');
+    procFor(spawned, 2).succeed();
     const results = await p;
     expect(results.map((r) => r.status)).toEqual(['downloaded', 'failed', 'downloaded']);
     expect(results[1].error).toBeTruthy();
@@ -359,9 +374,9 @@ describe('downloadMany pool', () => {
       onDone: (videoId) => done.push(videoId),
     });
     const spawned = await waitForProcs(procs, 2);
-    spawned[0].stdout.write('[download]  0.0% of 10.00MiB at 0.00B/s\n');
-    spawned[0].succeed();
-    spawned[1].succeed();
+    procFor(spawned, 0).stdout.write('[download]  0.0% of 10.00MiB at 0.00B/s\n');
+    procFor(spawned, 0).succeed();
+    procFor(spawned, 1).succeed();
     await p;
     expect(lines.some(([id, l]) => id === 'v0' && l.includes('0.0%'))).toBe(true);
     expect(done.sort()).toEqual(['v0', 'v1']);
