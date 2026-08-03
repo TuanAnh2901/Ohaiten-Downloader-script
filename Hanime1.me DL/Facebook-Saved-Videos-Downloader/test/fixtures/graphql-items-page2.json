@@ -8,13 +8,16 @@
               "cursor": "c6",
               "node": {
                 "id": "1620118249449415",
+                "__isContentCollectionItem": "Save",
                 "savable": {
+                  "__typename": "Video",
+                  "id": "1036239645584654",
                   "savable_title": { "text": "KOBEEEEE BANANAAA!😆" },
                   "savable_permalink": "https://www.facebook.com/watch/?ref=saved&v=1036239645584654",
                   "playable_duration": 30,
                   "savable_default_category": "VIDEO"
                 },
-                "containing_lists": [],
+                "containing_lists": { "count": 0, "nodes": [] },
                 "saver": {}
               }
             },
@@ -22,13 +25,16 @@
               "cursor": "c7",
               "node": {
                 "id": "1620116259449614",
+                "__isContentCollectionItem": "Save",
                 "savable": {
+                  "__typename": "Video",
+                  "id": "2904511416577621",
                   "savable_title": { "text": "THIS GUYS IS SO MAD😭" },
                   "savable_permalink": "https://www.facebook.com/watch/?ref=saved&v=2904511416577621",
                   "playable_duration": 67,
                   "savable_default_category": "VIDEO"
                 },
-                "containing_lists": [],
+                "containing_lists": { "count": 0, "nodes": [] },
                 "saver": {}
               }
             },
@@ -36,13 +42,16 @@
               "cursor": "c8",
               "node": {
                 "id": "1620113162783257",
+                "__isContentCollectionItem": "Save",
                 "savable": {
+                  "__typename": "Video",
+                  "id": "2138608167535448",
                   "savable_title": { "text": "EYES ON ME!🥰😄" },
                   "savable_permalink": "https://www.facebook.com/watch/?ref=saved&v=2138608167535448",
                   "playable_duration": 31,
                   "savable_default_category": "VIDEO"
                 },
-                "containing_lists": [],
+                "containing_lists": { "count": 0, "nodes": [] },
                 "saver": {}
               }
             },
@@ -50,13 +59,16 @@
               "cursor": "c9",
               "node": {
                 "id": "1618199239641316",
+                "__isContentCollectionItem": "Save",
                 "savable": {
+                  "__typename": "Video",
+                  "id": "1616437686111850",
                   "savable_title": { "text": ":))" },
                   "savable_permalink": "https://www.facebook.com/watch/?ref=saved&v=1616437686111850",
                   "playable_duration": 136,
                   "savable_default_category": "VIDEO"
                 },
-                "containing_lists": [],
+                "containing_lists": { "count": 0, "nodes": [] },
                 "saver": {}
               }
             },
@@ -64,13 +76,16 @@
               "cursor": "c10",
               "node": {
                 "id": "1613823866745520",
+                "__isContentCollectionItem": "Save",
                 "savable": {
+                  "__typename": "Video",
+                  "id": "2244898599679122",
                   "savable_title": { "text": "Version: Anh da đen cao,to,đen,hôi và Liễu Như Yên" },
                   "savable_permalink": "https://www.facebook.com/watch/?ref=saved&v=2244898599679122",
                   "playable_duration": 1260,
                   "savable_default_category": "VIDEO"
                 },
-                "containing_lists": [{ "id": "426792272115358", "name": "Download" }],
+                "containing_lists": { "count": 1, "nodes": [{ "id": "426792272115358", "name": "Download" }] },
                 "saver": {}
               }
             },
@@ -78,14 +93,17 @@
               "cursor": "c11",
               "node": {
                 "id": "999999999999999",
-                "_note": "synthetic non-video entry to exercise content_filter exclusion",
+                "_note": "synthetic non-video entry to exercise defensive permalink filter",
+                "__isContentCollectionItem": "Save",
                 "savable": {
+                  "__typename": "Photo",
+                  "id": "999999999999999",
                   "savable_title": { "text": "Ảnh mẫu để test content_filter" },
-                  "savable_permalink": "https://www.facebook.com/photo/?fbid=999999999999999",
+                  "savable_permalink": "https://www.facebook.com/photo.php?fbid=999999999999999",
                   "playable_duration": 0,
                   "savable_default_category": "PHOTO"
                 },
-                "containing_lists": [],
+                "containing_lists": { "count": 0, "nodes": [] },
                 "saver": {}
               }
             }
