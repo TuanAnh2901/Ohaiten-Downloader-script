@@ -38,7 +38,9 @@ export function buildYtDlpArgs(opts: BuildYtDlpArgsOpts): string[] {
     '--cookies',
     opts.cookiesFile,
     '-f',
-    'bv*[height<=1080]+ba/b[height<=1080]',
+    // HD DASH when available; /b = best muxed fallback so videos with no
+    // matching DASH streams (e.g. SD-only muxed) still resolve a format.
+    'bv*[height<=1080]+ba/b[height<=1080]/b',
     '--merge-output-format',
     'mp4',
     '--remux-video',

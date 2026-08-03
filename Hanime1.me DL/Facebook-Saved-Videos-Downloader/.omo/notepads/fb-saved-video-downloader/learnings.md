@@ -262,3 +262,10 @@
 - Tests: auth.test.ts passes `navigate: false` (hermetic seam; LaunchOpts.navigate defaults true). 122/122 still green, tsc clean, build exit 0.
 - LIVE E2E PASSED: node bin/fb-saved-dl.js list-collections --cookies Facebook-cookies.txt → 10 real collections with counts (Ahihi 7, Anime 62, Download 239, TV & Phim ảnh 33, ...), EXIT=0. Evidence: .omo/evidence/task-18-e2e6.log.
 - LESSON: a "blocked by WAF/external" conclusion must be proven by varying the local request context first (origin, page state) before blaming the remote. CORS is the first suspect for page.evaluate(fetch) failures, not WAF.
+
+## [2026-08-03] Task 18b: format selector muxed fallback (E2E fix)
+- BUG (live): download-collection 207833460677908 failed exit 1: `ERROR: [facebook] 363439375522548: Requested format is not available`. Selector `bv*[height<=1080]+ba/b[height<=1080]` had NO final muxed fallback: when the only formats are muxed (no matching DASH video+audio pair, e.g. SD-only muxed), neither branch resolves -> yt-dlp errors.
+- FIX (src/download.ts buildYtDlpArgs, format string only): `bv*[height<=1080]+ba/b[height<=1080]/b`. Trailing `/b` = best overall format, guarantees resolution. HD DASH still preferred when available (bv*[height<=1080]+ba unchanged).
+- Test: download.test.ts arg-builder expectations updated to the new string (2 spots). 122/122 pass, tsc clean, build exit 0.
+- LIVE E2E PASSED: node bin/fb-saved-dl.js download-collection 207833460677908 --cookies Facebook-cookies.txt --yes --jobs 2 -> EXIT=0, 1 downloaded 0 failed. File on disk: "downloads/Trò chơi/Bộ đội hủy diệt Grak - Nata.mp4" 503MB + .done.json. Evidence: .omo/evidence/task-18-e2e-download2.log.
+- NOTE: PATH yt-dlp is stable 2025.06.30 (stale per README); the format fix works on it too. Proven nightly stays at spike/yt-dlp.exe 2026.07.23.234303.
