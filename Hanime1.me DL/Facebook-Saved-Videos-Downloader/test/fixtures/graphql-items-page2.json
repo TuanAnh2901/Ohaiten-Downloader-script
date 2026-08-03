@@ -1,71 +1,76 @@
 {
   "data": {
     "viewer": {
-      "content_collection": {
-        "collection_items": {
+      "saver_info": {
+        "all_saves": {
           "edges": [
             {
               "cursor": "c6",
               "node": {
-                "id": "2904511416577621",
+                "id": "1620118249449415",
                 "savable": {
-                  "savable_title": { "text": "THIS GUYS IS SO MAD😭" },
-                  "savable_permalink": "https://www.facebook.com/watch/?v=2904511416577621",
-                  "playable_duration": 67,
+                  "savable_title": { "text": "KOBEEEEE BANANAAA!😆" },
+                  "savable_permalink": "https://www.facebook.com/watch/?ref=saved&v=1036239645584654",
+                  "playable_duration": 30,
                   "savable_default_category": "VIDEO"
                 },
+                "containing_lists": [],
                 "saver": {}
               }
             },
             {
               "cursor": "c7",
               "node": {
-                "id": "2138608167535448",
+                "id": "1620116259449614",
                 "savable": {
-                  "savable_title": { "text": "EYES ON ME!🥰😄" },
-                  "savable_permalink": "https://www.facebook.com/reel/2138608167535448/",
-                  "playable_duration": 31,
+                  "savable_title": { "text": "THIS GUYS IS SO MAD😭" },
+                  "savable_permalink": "https://www.facebook.com/watch/?ref=saved&v=2904511416577621",
+                  "playable_duration": 67,
                   "savable_default_category": "VIDEO"
                 },
+                "containing_lists": [],
                 "saver": {}
               }
             },
             {
               "cursor": "c8",
               "node": {
-                "id": "1616437686111850",
+                "id": "1620113162783257",
                 "savable": {
-                  "savable_title": { "text": ":))" },
-                  "savable_permalink": "https://www.facebook.com/watch/?v=1616437686111850",
-                  "playable_duration": 136,
+                  "savable_title": { "text": "EYES ON ME!🥰😄" },
+                  "savable_permalink": "https://www.facebook.com/watch/?ref=saved&v=2138608167535448",
+                  "playable_duration": 31,
                   "savable_default_category": "VIDEO"
                 },
+                "containing_lists": [],
                 "saver": {}
               }
             },
             {
               "cursor": "c9",
               "node": {
-                "id": "2244898599679122",
+                "id": "1618199239641316",
                 "savable": {
-                  "savable_title": { "text": "Version: Anh da đen cao,to,đen,hôi và Liễu Như Yên" },
-                  "savable_permalink": "https://www.facebook.com/reel/2244898599679122/",
-                  "playable_duration": 1260,
+                  "savable_title": { "text": ":))" },
+                  "savable_permalink": "https://www.facebook.com/watch/?ref=saved&v=1616437686111850",
+                  "playable_duration": 136,
                   "savable_default_category": "VIDEO"
                 },
+                "containing_lists": [],
                 "saver": {}
               }
             },
             {
               "cursor": "c10",
               "node": {
-                "id": "1005655615768824",
+                "id": "1613823866745520",
                 "savable": {
-                  "savable_title": { "text": "Tâm sự: Cuộc tình đổ vỡ của tôi năm 21 tuổi…" },
-                  "savable_permalink": "https://www.facebook.com/watch/?v=1005655615768824",
-                  "playable_duration": 672,
+                  "savable_title": { "text": "Version: Anh da đen cao,to,đen,hôi và Liễu Như Yên" },
+                  "savable_permalink": "https://www.facebook.com/watch/?ref=saved&v=2244898599679122",
+                  "playable_duration": 1260,
                   "savable_default_category": "VIDEO"
                 },
+                "containing_lists": [{ "id": "426792272115358", "name": "Download" }],
                 "saver": {}
               }
             },
@@ -77,8 +82,10 @@
                 "savable": {
                   "savable_title": { "text": "Ảnh mẫu để test content_filter" },
                   "savable_permalink": "https://www.facebook.com/photo/?fbid=999999999999999",
+                  "playable_duration": 0,
                   "savable_default_category": "PHOTO"
                 },
+                "containing_lists": [],
                 "saver": {}
               }
             }
