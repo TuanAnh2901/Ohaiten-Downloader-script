@@ -20,10 +20,11 @@ function tempProfile(): string {
 }
 
 describe('launchAuthenticated', () => {
-  it('injects cookies with .facebook.com domain before any navigation', async () => {
+  it('injects cookies with .facebook.com domain', async () => {
     const dir = tempProfile();
     const { context } = await launchAuthenticated(COOKIE_FILE, {
       userDataDir: dir,
+      navigate: false, // hermetic: no live Facebook navigation
     });
     try {
       const cookies = await context.cookies();
@@ -46,6 +47,7 @@ describe('assertLoggedIn', () => {
     const dir = tempProfile();
     const { context, page } = await launchAuthenticated(COOKIE_FILE, {
       userDataDir: dir,
+      navigate: false, // hermetic: this test routes its own /saved navigation
     });
     try {
       await page.route('**/*', async (route) => {

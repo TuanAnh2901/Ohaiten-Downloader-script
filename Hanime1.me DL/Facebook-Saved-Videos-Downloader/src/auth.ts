@@ -14,12 +14,19 @@ import { AUTH_FAILED, FbSavedCliError } from './errors.js';
 export interface LaunchOpts {
   /** Persistent profile dir. Defaults to ./playwright-profile/. */
   userDataDir?: string;
+  /** Navigate to /saved after cookie injection (default true). Tests pass
+   *  false to stay hermetic (no live Facebook). */
+  navigate?: boolean;
 }
 
 /**
- * Launch a HEADED persistent Chromium context and inject cookies BEFORE any
- * navigation. `launchPersistentContext` returns the context directly (no
- * separate browser object); closing the context closes the browser.
+ * Launch a HEADED persistent Chromium context, inject cookies BEFORE any
+ * navigation, then navigate to https://www.facebook.com/saved. The page MUST
+ * be on a real FB page before any GraphQL fetch: page.evaluate(fetch) against
+ * the graphql endpoint is same-origin only (from about:blank it is
+ * cross-origin → CORS → "TypeError: Failed to fetch"), and fb_dtsg comes from
+ * require('DTSG') which only exists after the saved page hydrates. This was
+ * the real task-18 blocker, NOT the WAF.
  */
 export async function launchAuthenticated(
   cookieFile: string,
@@ -36,6 +43,21 @@ export async function launchAuthenticated(
   await context.addCookies(toPlaywrightCookies(parseNetscapeFile(raw)));
 
   const page = context.pages()[0] ?? (await context.newPage());
+  if (opts.navigate !== false) {
+    try {
+      await page.goto('https://www.facebook.com/saved', {
+        waitUntil: 'domcontentloaded',
+        timeout: 60000,
+      });
+      // Let DTSG hydrate and the page settle before any GraphQL query.
+      await page.waitForTimeout(2500);
+      await assertLoggedIn(page);
+    } catch (err) {
+      // Don't leave a headed Chromium window orphaned on auth failure.
+      await context.close().catch(() => {});
+      throw err;
+    }
+  }
   return { context, page };
 }
 
