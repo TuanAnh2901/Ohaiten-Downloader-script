@@ -81,6 +81,4 @@ export function toPlaywrightCookies(
   }));
 }
 
-export function toCookieHeader(parsed: ParsedCookie[]): string {
-  return parsed.map((c) => `${c.name}=${c.value}`).join('; ');
-}
+

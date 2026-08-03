@@ -16,12 +16,18 @@ export function sanitizeFileName(name: string): string {
 }
 
 /**
- * `{SaveTimestamp}_{title}.mp4`. Sanitizes title, preserves Unicode.
- * `saveTimestamp` is expected pre-formatted as `YYYY-MM-DD_HHmm` and used
- * verbatim. If missing, the timestamp prefix is omitted — the caller (download
- * module) decides the publish-date fallback. On collision with an existing
- * name, appends `_{videoId}` before the extension. The final name is NOT added
- * to `existingNames`; the caller owns the set and adds it.
+ * Filename builder for saved videos.
+ *
+ * v1: title-only (`{title}.mp4`) — no save timestamp exists (spike B=NONE:
+ * Facebook exposes no "saved at" field on saved items, only a publish_time
+ * proxy; see README Notes). The publish-date fallback is DEFERRED: no caller
+ * supplies saveTimestamp today and none is expected until a real save-time
+ * source exists.
+ *
+ * `saveTimestamp` (if ever supplied) is expected pre-formatted as
+ * `YYYY-MM-DD_HHmm` and used verbatim as a prefix. On collision with an
+ * existing name, appends `_{videoId}` before the extension. The final name is
+ * NOT added to `existingNames`; the caller owns the set and adds it.
  */
 export function buildFileName(
   item: { videoId: string; title: string; saveTimestamp?: string },

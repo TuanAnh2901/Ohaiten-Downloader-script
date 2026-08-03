@@ -20,7 +20,6 @@ import {
   buildYtDlpArgs,
   downloadMany,
   downloadVideo,
-  getUploadDate,
   hasDoneMarker,
 } from '../src/download.js';
 
@@ -380,26 +379,5 @@ describe('downloadMany pool', () => {
     await p;
     expect(lines.some(([id, l]) => id === 'v0' && l.includes('0.0%'))).toBe(true);
     expect(done.sort()).toEqual(['v0', 'v1']);
-  });
-});
-
-describe('getUploadDate', () => {
-  it('returns the upload_date from --print output', async () => {
-    const { spawnFn, procs } = makeFakeSpawn();
-    const p = getUploadDate('yt-dlp', 'https://fb.com/v0', master, spawnFn);
-    const [proc] = await waitForProcs(procs, 1);
-    const cookieArg = cookiesArg(proc);
-    expect(cookieArg).not.toBe(master); // temp copy, never master
-    proc.stdout.write('20230715\n');
-    proc.succeed();
-    await expect(p).resolves.toBe('20230715');
-  });
-
-  it('returns null on failure (non-fatal)', async () => {
-    const { spawnFn, procs } = makeFakeSpawn();
-    const p = getUploadDate('yt-dlp', 'https://fb.com/v0', master, spawnFn);
-    const [proc] = await waitForProcs(procs, 1);
-    proc.failWith('ERROR: Unable to download webpage\n');
-    await expect(p).resolves.toBeNull();
   });
 });

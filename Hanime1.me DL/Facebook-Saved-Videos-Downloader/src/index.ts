@@ -121,6 +121,7 @@ interface DownloadFlags {
   yes: boolean;
   jobs: number;
   ytDlpPath: string;
+  verbose: boolean;
 }
 
 function toDownloadOptions(f: DownloadFlags): DownloadOptions {
@@ -141,6 +142,12 @@ async function runDownload(
 ): Promise<void> {
   const opts = toDownloadOptions(flags);
   assertCookiesFile(opts.cookiesFile);
+
+  if (flags.verbose) {
+    process.stderr.write(
+      `[VERBOSE] cookies=${opts.cookiesFile} outputDir=${opts.outputDir} jobs=${opts.jobs} ytDlpPath=${opts.ytDlpPath} dryRun=${opts.dryRun}\n`,
+    );
+  }
 
   const collections = await services.listCollections(opts.cookiesFile);
   let targets = collections;
@@ -220,10 +227,18 @@ export function createProgram(services: CliServices, io: CliIo = defaultIo): Com
       .action(
         hasArg
           ? async (collectionId: string, flags: DownloadFlags) => {
-              await runDownload(services, io, flags, collectionId);
+              await runDownload(
+                services,
+                io,
+                { ...flags, verbose: Boolean(program.opts().verbose) },
+                collectionId,
+              );
             }
           : async (flags: DownloadFlags) => {
-              await runDownload(services, io, flags);
+              await runDownload(services, io, {
+                ...flags,
+                verbose: Boolean(program.opts().verbose),
+              });
             },
       );
     return cmd;

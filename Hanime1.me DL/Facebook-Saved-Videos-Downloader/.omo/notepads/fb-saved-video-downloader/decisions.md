@@ -20,3 +20,7 @@
 
 ## [2026-08-03] Task 17 decision (ratified)
 - Report location: KEEP {outputDir}/reports/ (T16 decision). Plan spec said `reports/{timestamp}-report.json` at project root, but the report belongs next to its downloads: self-contained per --output-dir, no cwd collision across parallel runs, already gitignored (reports/). DELIBERATE deviation from plan, recorded per T17 instructions.
+
+## [2026-08-03] Final Wave fix batch (F2/F4 review fixes)
+- Dead code removed: getUploadDate (src/download.ts --print %(upload_date)s lookup) + toCookieHeader (src/cookies.ts, leftover from abandoned raw-fetch auth path). Both had ZERO production callers (verified by grep). Publish-date fallback DEFERRED — title-only filenames confirmed v1 (spike B=NONE: no save timestamp exists, README Notes documents this).
+- T10 DOM-fallback skip recorded: DOM-based collection enumerator fallback superseded by spike-validated all-saves GraphQL single-stream architecture (see src/collections.ts header). No DOM fallback will be built.

@@ -160,6 +160,28 @@ describe('fb-saved-dl CLI', () => {
     }
   });
 
+  it('--verbose prints the resolved config to stderr', async () => {
+    const services = fakeServices();
+    services.downloadAll = vi.fn(async () => ({ downloaded: 5, failed: 0, skipped: 0 }));
+    const stderr = captureStream(process.stderr);
+    try {
+      const code = await run(
+        ['node', 'fb-saved-dl', 'download-all', '--cookies', COOKIES, '--yes', '--verbose'],
+        services,
+        fakeIo(),
+      );
+      expect(code).toBe(EXIT_OK);
+      expect(stderr.text).toContain('[VERBOSE]');
+      expect(stderr.text).toContain(`cookies=${COOKIES}`);
+      expect(stderr.text).toContain('outputDir=./downloads');
+      expect(stderr.text).toContain('jobs=3');
+      expect(stderr.text).toContain('ytDlpPath=yt-dlp');
+      expect(stderr.text).toContain('dryRun=false');
+    } finally {
+      stderr.restore();
+    }
+  });
+
   it('download-all prompting no aborts with exit 0', async () => {
     const services = fakeServices();
     const io = fakeIo();

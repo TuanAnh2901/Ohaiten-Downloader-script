@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
   parseNetscapeFile,
   toPlaywrightCookies,
-  toCookieHeader,
 } from '../src/cookies.js';
 
 // Synthetic fixture: deterministic Netscape cookie file (never depends on the
@@ -59,14 +58,5 @@ describe('toPlaywrightCookies', () => {
     expect(session).toHaveLength(2);
     for (const c of session) expect(c.expires).toBe(-1);
     expect(pw.find((c) => c.name === 'c_user')?.expires).toBeGreaterThan(-1);
-  });
-});
-
-describe('toCookieHeader', () => {
-  it('joins name=value pairs with "; "', () => {
-    const header = toCookieHeader(parseNetscapeFile(FIXTURE));
-    expect(header).toContain('c_user=123456789012345');
-    expect(header).toContain('xs=');
-    expect(header.split('; ')).toHaveLength(11);
   });
 });
