@@ -1,0 +1,49 @@
+{
+  "data": {
+    "viewer": {
+      "saver_content_collections": {
+        "edges": [
+          {
+            "cursor": "c1",
+            "node": {
+              "id": "302722351189018",
+              "collection_title": "Ahihi"
+            }
+          },
+          {
+            "cursor": "c2",
+            "node": {
+              "id": "165363141591607",
+              "collection_title": "Anime"
+            }
+          },
+          {
+            "cursor": "c3",
+            "node": {
+              "id": "426792272115358",
+              "collection_title": "Download"
+            }
+          },
+          {
+            "cursor": "c4",
+            "node": {
+              "id": "205843814210206",
+              "collection_title": "Khoa học & Công nghệ"
+            }
+          },
+          {
+            "cursor": "c5",
+            "node": {
+              "id": "145653533562568",
+              "collection_title": "Để xem sau"
+            }
+          }
+        ],
+        "page_info": {
+          "end_cursor": "c5",
+          "has_next_page": false
+        }
+      }
+    }
+  }
+}

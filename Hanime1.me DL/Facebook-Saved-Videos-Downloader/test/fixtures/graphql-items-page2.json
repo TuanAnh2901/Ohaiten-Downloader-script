@@ -1,0 +1,94 @@
+{
+  "data": {
+    "viewer": {
+      "content_collection": {
+        "collection_items": {
+          "edges": [
+            {
+              "cursor": "c6",
+              "node": {
+                "id": "2904511416577621",
+                "savable": {
+                  "savable_title": { "text": "THIS GUYS IS SO MAD😭" },
+                  "savable_permalink": "https://www.facebook.com/watch/?v=2904511416577621",
+                  "playable_duration": 67,
+                  "savable_default_category": "VIDEO"
+                },
+                "saver": {}
+              }
+            },
+            {
+              "cursor": "c7",
+              "node": {
+                "id": "2138608167535448",
+                "savable": {
+                  "savable_title": { "text": "EYES ON ME!🥰😄" },
+                  "savable_permalink": "https://www.facebook.com/reel/2138608167535448/",
+                  "playable_duration": 31,
+                  "savable_default_category": "VIDEO"
+                },
+                "saver": {}
+              }
+            },
+            {
+              "cursor": "c8",
+              "node": {
+                "id": "1616437686111850",
+                "savable": {
+                  "savable_title": { "text": ":))" },
+                  "savable_permalink": "https://www.facebook.com/watch/?v=1616437686111850",
+                  "playable_duration": 136,
+                  "savable_default_category": "VIDEO"
+                },
+                "saver": {}
+              }
+            },
+            {
+              "cursor": "c9",
+              "node": {
+                "id": "2244898599679122",
+                "savable": {
+                  "savable_title": { "text": "Version: Anh da đen cao,to,đen,hôi và Liễu Như Yên" },
+                  "savable_permalink": "https://www.facebook.com/reel/2244898599679122/",
+                  "playable_duration": 1260,
+                  "savable_default_category": "VIDEO"
+                },
+                "saver": {}
+              }
+            },
+            {
+              "cursor": "c10",
+              "node": {
+                "id": "1005655615768824",
+                "savable": {
+                  "savable_title": { "text": "Tâm sự: Cuộc tình đổ vỡ của tôi năm 21 tuổi…" },
+                  "savable_permalink": "https://www.facebook.com/watch/?v=1005655615768824",
+                  "playable_duration": 672,
+                  "savable_default_category": "VIDEO"
+                },
+                "saver": {}
+              }
+            },
+            {
+              "cursor": "c11",
+              "node": {
+                "id": "999999999999999",
+                "_note": "synthetic non-video entry to exercise content_filter exclusion",
+                "savable": {
+                  "savable_title": { "text": "Ảnh mẫu để test content_filter" },
+                  "savable_permalink": "https://www.facebook.com/photo/?fbid=999999999999999",
+                  "savable_default_category": "PHOTO"
+                },
+                "saver": {}
+              }
+            }
+          ],
+          "page_info": {
+            "end_cursor": "c11",
+            "has_next_page": false
+          }
+        }
+      }
+    }
+  }
+}
