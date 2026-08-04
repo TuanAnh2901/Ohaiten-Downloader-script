@@ -5,9 +5,11 @@ downloads/
 .omo/evidence/
 *.done.json
 dist/
+frontend-dist/
 node_modules/
 reports/
 spike/*.mp4
 spike/yt-dlp.exe
+fb-saved-dl.exe
 1b95ae69-*.txt
 spike/evidence/

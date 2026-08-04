@@ -1,0 +1,43 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Facebook Saved Downloader",
+  "version": "0.1.0",
+  "identifier": "com.fbsaveddl.desktop",
+  "build": {
+    "frontendDist": "../frontend-dist",
+    "beforeDevCommand": "npm run frontend:build",
+    "beforeBuildCommand": "npm run frontend:build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Facebook Saved Downloader",
+        "width": 1120,
+        "height": 760,
+        "minWidth": 880,
+        "minHeight": 620,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com"
+    },
+    "withGlobalTauri": true
+  },
+  "bundle": {
+    "active": true,
+    "icon": ["icons/icon.svg"],
+    "targets": ["nsis"],
+    "resources": [
+      "../fb-saved-dl.exe",
+      "../spike/yt-dlp.exe"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
+  }
+}

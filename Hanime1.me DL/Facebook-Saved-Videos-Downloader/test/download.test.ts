@@ -227,17 +227,7 @@ describe('cookie safety (temp copy, never the master)', () => {
 });
 
 describe('skip logic', () => {
-  it('skips when a .done.json marker exists — yt-dlp not spawned', async () => {
-    const { spawnFn, procs } = makeFakeSpawn();
-    const it0 = item(0);
-    writeFileSync(markerPath(it0.outPath), JSON.stringify({ videoId: it0.videoId }));
-    const results = await downloadMany([it0], { jobs: 1, cookiesFile: master, spawnFn });
-    expect(results).toEqual([{ videoId: it0.videoId, status: 'skipped' }]);
-    expect(procs).toHaveLength(0);
-    expect(hasDoneMarker(it0.outPath)).toBe(true);
-  });
-
-  it('skips an existing file >=1MB without a marker (pre-marker downloads)', async () => {
+  it('skips an existing file >=1MB (no marker needed)', async () => {
     const { spawnFn, procs } = makeFakeSpawn();
     const it0 = item(0);
     writeFileSync(it0.outPath, Buffer.alloc(2 * 1024 * 1024)); // 2MB
@@ -246,7 +236,7 @@ describe('skip logic', () => {
     expect(procs).toHaveLength(0);
   });
 
-  it('downloads a small file WITHOUT a marker (Metis fix)', async () => {
+  it('downloads a small file <1MB (corrupt/partial redownload)', async () => {
     const { spawnFn, procs } = makeFakeSpawn();
     const it0 = item(0);
     writeFileSync(it0.outPath, Buffer.alloc(10)); // 10 bytes < 1MB
@@ -256,22 +246,8 @@ describe('skip logic', () => {
     const results = await p;
     expect(results).toEqual([{ videoId: it0.videoId, status: 'downloaded' }]);
     expect(procs).toHaveLength(1);
-    expect(existsSync(markerPath(it0.outPath))).toBe(true); // marker written
   });
 
-  it('writes a marker with videoId, url, timestamp and size', async () => {
-    const { spawnFn, procs } = makeFakeSpawn();
-    const it0 = item(0);
-    const p = downloadMany([it0], { jobs: 1, cookiesFile: master, spawnFn });
-    const [proc] = await waitForProcs(procs, 1);
-    proc.succeed();
-    await p;
-    const marker = JSON.parse(readFileSync(markerPath(it0.outPath), 'utf-8'));
-    expect(marker.videoId).toBe(it0.videoId);
-    expect(marker.url).toBe(it0.url);
-    expect(marker.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-    expect(typeof marker.size).toBe('number');
-  });
 });
 
 describe('error handling', () => {
@@ -346,8 +322,6 @@ describe('downloadMany pool', () => {
     expect(procs).toHaveLength(6);
     expect(results).toHaveLength(6);
     expect(results.every((r) => r.status === 'downloaded')).toBe(true);
-    // one marker per downloaded item
-    expect(items.every((i) => existsSync(markerPath(i.outPath)))).toBe(true);
   });
 
   it('respects jobs=1 (serial)', async () => {

@@ -18,6 +18,7 @@ import {
   downloadCollection as runDownloadCollection,
   listCollectionsService,
 } from './orchestrator.js';
+import { runEngineJsonl } from './engine-jsonl.js';
 
 // ---------------------------------------------------------------------------
 // Public types — the CLI layer talks to scrape services through this seam so
@@ -37,6 +38,9 @@ export interface DownloadOptions {
   dryRun: boolean;
   jobs: number;
   ytDlpPath: string;
+  resolution?: number;
+  signal?: AbortSignal;
+  onProgress?: (progress: { collectionId: string; videoId: string; completed: number; total: number }) => void;
 }
 
 export interface DownloadResult {
@@ -260,6 +264,7 @@ export async function run(
   io: CliIo = defaultIo,
 ): Promise<number> {
   process.exitCode = EXIT_OK;
+  if (argv.includes('--engine-jsonl')) return runEngineJsonl(argv.filter((arg) => arg !== '--engine-jsonl'), services);
   const program = createProgram(services, io);
   try {
     await program.parseAsync(argv);

@@ -27,10 +27,9 @@ report of everything it did.
 ## Requirements
 
 - **Node.js 20+** with npm
-- **yt-dlp nightly** with ffmpeg bundled. The nightly channel works with
-  Facebook; the stable channel is stale and may fail. A proven build is bundled
-  at `spike/yt-dlp.exe` (nightly `2026.07.23.234303`, includes ffmpeg). If you
-  use your own install, point at it with `--yt-dlp-path`.
+- **yt-dlp**. The desktop app discovers managed app-local, Windows PATH, then
+  bundled `yt-dlp.exe`, and Settings can install pinned official release
+  `2026.07.04` after SHA-256 verification. CLI `--yt-dlp-path` remains supported.
 - **A Netscape-format cookie file** exported from a logged-in browser session.
   Export with a browser extension (for example "Get cookies.txt LOCALLY") from
   `facebook.com`. The default filename is `Facebook-cookies.txt`.
@@ -156,7 +155,7 @@ downloads/
 |---|---|
 | Exits with code 2, "refresh cookies" | Session expired or hit a login/checkpoint page. Re-export cookies from your browser into `Facebook-cookies.txt` (or the file you pass with `--cookies`) and run again. |
 | "cookies file not found" | The cookie file path is wrong, or you have not exported one. Export a Netscape-format file from your logged-in browser. |
-| yt-dlp not found | `yt-dlp` is not on PATH. Install the nightly build (with ffmpeg) and pass `--yt-dlp-path <path>`, or use the bundled `spike/yt-dlp.exe`. |
+| yt-dlp not found | Open desktop Settings and install official yt-dlp, or install `yt-dlp` on PATH. CLI users can pass `--yt-dlp-path <path>`. |
 | Error `FETCH_GRAPHQL` | Facebook rotated its internal GraphQL doc IDs, so the query the tool sends no longer resolves. This is expected over time; the doc IDs live in `src/graphql.ts` / `src/collections.ts` and need re-capturing from a logged-in session. |
 | "Cannot parse data" | Transient Facebook response parse failure. The tool retries automatically (exponential backoff, up to 3 attempts); usually no action needed. |
 | Failed downloads reported | Individual failures are recorded in `downloads/reports/report-*.json` with the video URL and reason. Re-run to retry them; finished files are skipped, so re-runs are incremental. |

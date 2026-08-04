@@ -31,6 +31,7 @@ export interface BuildYtDlpArgsOpts {
   url: string;
   /** The binary is the spawn executable, never an arg — kept for symmetry. */
   ytDlpPath?: string;
+  resolution?: number;
 }
 
 export function buildYtDlpArgs(opts: BuildYtDlpArgsOpts): string[] {
@@ -40,7 +41,7 @@ export function buildYtDlpArgs(opts: BuildYtDlpArgsOpts): string[] {
     '-f',
     // HD DASH when available; /b = best muxed fallback so videos with no
     // matching DASH streams (e.g. SD-only muxed) still resolve a format.
-    'bv*[height<=720]+ba/b[height<=720]/b',
+    `bv*[height<=${opts.resolution ?? 720}]+ba/b[height<=${opts.resolution ?? 720}]/b`,
     '--merge-output-format',
     'mp4',
     '--remux-video',
@@ -105,6 +106,7 @@ function runYtDlp(
   args: string[],
   onProgress?: (line: string) => void,
   spawnFn: typeof spawn = spawn,
+  signal?: AbortSignal,
 ): Promise<{ code: number; output: string }> {
   return new Promise((resolve) => {
     const child = spawnFn(ytDlpPath, args, {
@@ -118,7 +120,12 @@ function runYtDlp(
     };
     child.stdout?.on('data', onData);
     child.stderr?.on('data', onData);
-    child.on('close', (code) => resolve({ code: code ?? -1, output }));
+    const abort = () => child.kill?.('SIGINT');
+    signal?.addEventListener('abort', abort, { once: true });
+    child.on('close', (code) => {
+      signal?.removeEventListener('abort', abort);
+      resolve({ code: code ?? -1, output });
+    });
     child.on('error', (err) =>
       resolve({ code: -1, output: `${output}\n${err.message}` }),
     );
@@ -176,6 +183,8 @@ export interface DownloadVideoOpts {
   onProgress?: (line: string) => void;
   /** Test seam: inject a fake spawn. Defaults to node:child_process.spawn. */
   spawnFn?: typeof spawn;
+  resolution?: number;
+  signal?: AbortSignal;
 }
 
 export async function downloadVideo(
@@ -187,12 +196,14 @@ export async function downloadVideo(
       cookiesFile: tempPath,
       outPath: opts.outPath,
       url: opts.url,
+      resolution: opts.resolution,
     });
     const { code, output } = await runYtDlp(
       opts.ytDlpPath ?? 'yt-dlp',
       args,
       opts.onProgress,
       opts.spawnFn,
+      opts.signal,
     );
     if (code !== 0) {
       if (AUTH_PATTERN.test(output)) {
@@ -226,6 +237,7 @@ export interface DownloadItem {
   videoId: string;
   url: string;
   outPath: string;
+  collectionId?: string;
 }
 
 export interface DownloadManyOpts {
@@ -237,6 +249,8 @@ export interface DownloadManyOpts {
   onDone?: (videoId: string) => void;
   /** Test seam: inject a fake spawn. Defaults to node:child_process.spawn. */
   spawnFn?: typeof spawn;
+  resolution?: number;
+  signal?: AbortSignal;
 }
 
 export type DownloadResult = {
@@ -250,7 +264,7 @@ async function downloadOne(
   opts: DownloadManyOpts,
 ): Promise<DownloadResult> {
   try {
-    if (hasDoneMarker(item.outPath) || isAlreadyDownloaded(item.outPath)) {
+    if (isAlreadyDownloaded(item.outPath)) {
       return { videoId: item.videoId, status: 'skipped' };
     }
     const res = await downloadVideo({
@@ -260,15 +274,12 @@ async function downloadOne(
       ytDlpPath: opts.ytDlpPath,
       onProgress: (line) => opts.onProgress?.(item.videoId, line),
       spawnFn: opts.spawnFn,
+      resolution: opts.resolution,
+      signal: opts.signal,
     });
     if (!res.ok) {
       return { videoId: item.videoId, status: 'failed', error: res.error };
     }
-    writeDoneMarker(item.outPath, {
-      videoId: item.videoId,
-      url: item.url,
-      size: res.size ?? 0,
-    });
     return { videoId: item.videoId, status: 'downloaded' };
   } catch (err) {
     // Per-item isolation: individual failures never throw. ONLY auth errors
@@ -294,6 +305,7 @@ export async function downloadMany(
 
   const worker = async (): Promise<void> => {
     while (cursor < items.length) {
+      if (opts.signal?.aborted) return;
       const idx = cursor++;
       const item = items[idx];
       results[idx] = await downloadOne(item, opts);

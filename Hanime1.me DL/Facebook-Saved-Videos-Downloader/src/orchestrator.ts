@@ -125,6 +125,7 @@ export function planDownloads(
       videoId: item.videoId,
       url: item.permalink,
       outPath: join(outputDir, folder, name),
+      collectionId: collectionId ?? item.collectionIds[0] ?? '',
     });
   }
   return { downloads, duplicates };
@@ -142,6 +143,7 @@ function buildPlanText(downloads: DownloadItem[], opts: OrchestratorOpts): strin
         cookiesFile: opts.cookiesFile,
         outPath: d.outPath,
         url: d.url,
+        resolution: opts.resolution,
       }).join(' ')}`,
     )
     .join('\n');
@@ -166,6 +168,7 @@ async function runDownloads(
   for (const d of downloads) slots.set(d.videoId, mp.createSlot(d.videoId));
 
   const urlById = new Map(downloads.map((d) => [d.videoId, d.url]));
+  const completedIds = new Set<string>();
   const results = await downloadMany(downloads, {
     jobs: opts.jobs,
     cookiesFile: opts.cookiesFile,
@@ -173,9 +176,22 @@ async function runDownloads(
     spawnFn: opts.spawnFn,
     onProgress: (videoId, line) => {
       const p = parseYtDlpLine(line);
-      if (p) slots.get(videoId)?.update(p.percent, p.size, '', p.speed, p.eta);
+      if (p) {
+        slots.get(videoId)?.update(p.percent, p.size, '', p.speed, p.eta);
+        if (p.percent >= 100 && !completedIds.has(videoId)) {
+          completedIds.add(videoId);
+          opts.onProgress?.({
+            collectionId: downloads.find((d) => d.videoId === videoId)?.collectionId ?? '',
+            videoId,
+            completed: 1,
+            total: 1,
+          });
+        }
+      }
     },
     onDone: (videoId) => slots.get(videoId)?.finish('done'),
+    signal: opts.signal,
+    resolution: opts.resolution,
   });
   for (const r of results) {
     if (r.status === 'downloaded') report.addDownloaded(r.videoId);
