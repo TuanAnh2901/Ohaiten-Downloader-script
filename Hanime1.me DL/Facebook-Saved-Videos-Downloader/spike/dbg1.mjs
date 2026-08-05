@@ -1,0 +1,11 @@
+import fs from 'node:fs';
+const html = fs.readFileSync('spike/evidence/rerun/saved_ssr.html', 'utf8');
+const needle = '"result":{"data":';
+let idx = html.indexOf(needle);
+console.log('needle at', idx);
+const start = html.lastIndexOf('{', idx);
+const seg = html.slice(start, start + 300);
+console.log('segment:', JSON.stringify(seg));
+const i2 = html.indexOf('all_saves');
+console.log('--- around all_saves ---');
+console.log(JSON.stringify(html.slice(i2 - 800, i2 + 100)));
