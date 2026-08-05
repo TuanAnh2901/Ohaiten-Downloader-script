@@ -40,9 +40,10 @@ export class MultiProgress {
         const empty = 40 - filled;
         const bar =
           '█'.repeat(Math.max(0, filled)) + '░'.repeat(Math.max(0, empty));
+        const sizeText = total ? `${downloaded}/${total}` : downloaded;
         entry.line =
           `${label}  [${bar}] ${pct.toFixed(1)}%  ` +
-          `${downloaded}/${total}  ${speed}  ETA ${eta}`;
+          `${sizeText}  ${speed}  ETA ${eta}`;
         this.render();
       },
       finish: (message) => {
