@@ -94,6 +94,7 @@ class FakeChild extends EventEmitter {
   succeed(): void {
     if (this.exited) return;
     this.exited = true;
+    this.stdout.write('[download] 100.0% of 10.00MiB at 1.00MiB/s\n');
     this.stdout.end();
     this.stderr.end();
     this.emit('close', 0);
@@ -294,11 +295,14 @@ describe('downloadAll', () => {
     try {
       const { spawnFn, procs } = makeFakeSpawn();
       const { launchFn, closed } = fakeLaunch();
-      const p = downloadAll(baseOpts(dir, { spawnFn, launchFn, jobs: 2 }));
+      const progress: Array<{ completed: number; failed?: number; total: number }> = [];
+      const p = downloadAll(baseOpts(dir, { spawnFn, launchFn, jobs: 2, onProgress: (event) => progress.push(event) }));
       await drainPool(procs, 10);
       const result = await p;
 
       expect(result).toEqual({ downloaded: 10, failed: 0, skipped: 0 });
+      expect(progress.at(-1)).toMatchObject({ completed: 10, failed: 0, total: 10 });
+      expect(progress.filter((event) => event.percent === 100)).toHaveLength(10);
       expect(closed).toHaveLength(1); // browser session closed after the run
 
       // Every queued item: temp cookie copy (never the master file).

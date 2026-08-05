@@ -40,7 +40,16 @@ export interface DownloadOptions {
   ytDlpPath: string;
   resolution?: number;
   signal?: AbortSignal;
-  onProgress?: (progress: { collectionId: string; videoId: string; completed: number; total: number }) => void;
+  onProgress?: (progress: {
+    collectionId: string;
+    videoId: string;
+    completed: number;
+    failed?: number;
+    total: number;
+    percent?: number;
+    speed?: string;
+    eta?: string;
+  }) => void;
 }
 
 export interface DownloadResult {
@@ -125,6 +134,7 @@ interface DownloadFlags {
   yes: boolean;
   jobs: number;
   ytDlpPath: string;
+  resolution: number;
   verbose: boolean;
 }
 
@@ -135,6 +145,7 @@ function toDownloadOptions(f: DownloadFlags): DownloadOptions {
     dryRun: f.dryRun,
     jobs: f.jobs,
     ytDlpPath: f.ytDlpPath,
+    resolution: f.resolution,
   };
 }
 
@@ -228,6 +239,7 @@ export function createProgram(services: CliServices, io: CliIo = defaultIo): Com
       .option('--yes', 'Skip the confirmation prompt', false)
       .option('--jobs <n>', 'Concurrent downloads', int, 3)
       .option('--yt-dlp-path <path>', 'yt-dlp binary path', 'yt-dlp')
+      .option('--resolution <height>', 'Maximum video height', int, 720)
       .action(
         hasArg
           ? async (collectionId: string, flags: DownloadFlags) => {

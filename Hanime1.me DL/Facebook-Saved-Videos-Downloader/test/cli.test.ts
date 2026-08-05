@@ -129,6 +129,7 @@ describe('fb-saved-dl CLI', () => {
         outputDir: './downloads',
         dryRun: false,
         jobs: 3,
+        resolution: 720,
         ytDlpPath: 'yt-dlp',
       });
       // Confirmation summary: N collections, M videos total + per-collection counts
@@ -157,6 +158,22 @@ describe('fb-saved-dl CLI', () => {
       expect(stdout.text).toContain('[DONE] 5 downloaded, 0 failed, 0 skipped');
     } finally {
       stdout.restore();
+    }
+  });
+
+  it('forwards --resolution to the download service', async () => {
+    const services = fakeServices();
+    const io = fakeIo();
+    try {
+      const code = await run(
+        ['node', 'fb-saved-dl', 'download-all', '--cookies', COOKIES, '--yes', '--resolution', '1080'],
+        services,
+        io,
+      );
+      expect(code).toBe(EXIT_PARTIAL);
+      expect(services.downloadAll).toHaveBeenCalledWith(expect.objectContaining({ resolution: 1080 }));
+    } finally {
+      // The CLI writes its result to stdout; no stream capture is needed here.
     }
   });
 

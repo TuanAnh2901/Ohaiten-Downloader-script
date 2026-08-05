@@ -246,7 +246,7 @@ export interface DownloadManyOpts {
   cookiesFile: string;
   ytDlpPath?: string;
   onProgress?: (videoId: string, line: string) => void;
-  onDone?: (videoId: string) => void;
+  onDone?: (videoId: string, result: DownloadResult) => void;
   /** Test seam: inject a fake spawn. Defaults to node:child_process.spawn. */
   spawnFn?: typeof spawn;
   resolution?: number;
@@ -309,7 +309,7 @@ export async function downloadMany(
       const idx = cursor++;
       const item = items[idx];
       results[idx] = await downloadOne(item, opts);
-      opts.onDone?.(item.videoId);
+      opts.onDone?.(item.videoId, results[idx]);
     }
   };
 

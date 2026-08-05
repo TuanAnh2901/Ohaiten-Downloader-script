@@ -169,6 +169,8 @@ async function runDownloads(
 
   const urlById = new Map(downloads.map((d) => [d.videoId, d.url]));
   const completedIds = new Set<string>();
+  let completed = 0;
+  let failed = 0;
   const results = await downloadMany(downloads, {
     jobs: opts.jobs,
     cookiesFile: opts.cookiesFile,
@@ -183,13 +185,28 @@ async function runDownloads(
           opts.onProgress?.({
             collectionId: downloads.find((d) => d.videoId === videoId)?.collectionId ?? '',
             videoId,
-            completed: 1,
-            total: 1,
+            completed,
+            failed,
+            total: downloads.length,
+            percent: p.percent,
+            speed: p.speed,
+            eta: p.eta,
           });
         }
       }
     },
-    onDone: (videoId) => slots.get(videoId)?.finish('done'),
+    onDone: (videoId, result) => {
+      slots.get(videoId)?.finish('done');
+      if (result.status === 'failed') failed += 1;
+      else completed += 1;
+      opts.onProgress?.({
+        collectionId: downloads.find((d) => d.videoId === videoId)?.collectionId ?? '',
+        videoId,
+        completed,
+        failed,
+        total: downloads.length,
+      });
+    },
     signal: opts.signal,
     resolution: opts.resolution,
   });
