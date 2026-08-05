@@ -24,3 +24,9 @@
 ## [2026-08-03] Final Wave fix batch (F2/F4 review fixes)
 - Dead code removed: getUploadDate (src/download.ts --print %(upload_date)s lookup) + toCookieHeader (src/cookies.ts, leftover from abandoned raw-fetch auth path). Both had ZERO production callers (verified by grep). Publish-date fallback DEFERRED — title-only filenames confirmed v1 (spike B=NONE: no save timestamp exists, README Notes documents this).
 - T10 DOM-fallback skip recorded: DOM-based collection enumerator fallback superseded by spike-validated all-saves GraphQL single-stream architecture (see src/collections.ts header). No DOM fallback will be built.
+
+## [2026-08-04] Task 8 report history
+- Frontend history uses localStorage-compatible local non-secret storage; no Rust command or downloader changes needed.
+- Report view model is separate from root CLI `src/report.ts` because GUI requires lifecycle status, duration, output path, item-level failure detail, and restart rendering.
+T9: Keep resource paths in tauri.conf.json as explicit resources; do not use externalBin because frontend invokes the engine through Rust and packaged resource_dir resolution. Existing package scripts already enforce frontend build and x86_64-pc-windows-msvc.
+T10: Treat unknown human CLI command exit 1 as valid nonzero Commander behavior; machine missing-cookie must use JSONL error terminal exit 3. Keep live dry-run bounded at 120s; no retries or unbounded browser process.

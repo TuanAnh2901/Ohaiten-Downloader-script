@@ -275,3 +275,65 @@
 - src/download.ts buildYtDlpArgs format string: `bv*[height<=1080]+ba/b[height<=1080]/b` -> `bv*[height<=720]+ba/b[height<=720]/b`. Trailing `/b` muxed fallback (Task 18b live fix) kept intact.
 - test/download.test.ts arg-builder assertions updated (2 spots). README had no resolution mention — no change.
 - Verified: npm test 122/122, tsc --noEmit clean, npm run build exit 0, live dry-run plan shows `-f bv*[height<=720]+ba/b[height<=720]/b`.
+
+## [2026-08-04] Task 1 SEA build evidence complete
+- Fresh Windows x64 SEA attempt `20260804T020336785Z-f2248e1e` completed from project root. Host `win32`, `process.arch=x64`, `PROCESSOR_ARCHITECTURE=AMD64`, exact target `x86_64-pc-windows-msvc`, Node `v26.4.0`, npm `11.16.0`, git `2.50.1.windows.1`, HEAD `7464dd46d227e4ee1504ea4986f56ff85769967f`.
+- Existing `dist/index.cjs`, `dist/index.blob`, `dist/.sea-assets`, and `fb-saved-dl.exe` quarantined outside repo at `D:\Temp\opencode\fb-saved-dl-sea-quarantine-20260804T020336785Z-f2248e1e`; pre-build absence manifest records all four absent before build.
+- Bounded canonical commands passed: `npm ci` 8.36s, `npm run build:sea` 35.52s, each timeout 300s. Outputs fresh after build start: `dist/index.cjs` 7,431,088 bytes SHA-256 `62C042918A23A2BA6A3D325C0DD84FE1D0D33BB9E3D4E393758DF3A3019BB416`; `dist/index.blob` 7,431,128 bytes SHA-256 `F10980EDE245CD596A440C89B5308533BA42CFB3AE8C1B202A5FB172825F02FA`; `.sea-assets` browsers/package manifests; `fb-saved-dl.exe` 110,788,096 bytes SHA-256 `85E59FB31845D5A8DF7D5F635FACB66C517FC7DA012D622308ACB1762D9E2E8A`.
+- Bounded standalone checks: SEA `--version` and `--help` passed; invalid-command probe returned exit 1 and is classified `expected_failure`; negative target proof rejected `i686-pc-windows-msvc` against required `x86_64-pc-windows-msvc` with exit 0. No live Facebook crawl or cookie input used; task-1 logs sanitized.
+- Evidence: `.omo/evidence/sea/20260804T020336785Z-f2248e1e/`, `.omo/evidence/task-1-sea-build.log`, `.omo/evidence/task-1-sea-build-error.log`. First runner attempt had only evidence-runner argument encoding defect; preserved separately and superseded by final attempt.
+
+## [2026-08-04] Task 2 engine JSONL contract
+- `src/engine-jsonl.ts` owns machine mode. `--engine-jsonl` branches before Commander, preserving human commands/output.
+- Normative stream: optional `collections`, `progress*`, exactly one terminal last; parser accepts CRLF and rejects blank/malformed/unknown/missing/duplicate/post-terminal/EOF-without-terminal input.
+- Machine flags pass cookie path only: `--cookies`, `--output-dir`, `--yt-dlp-path`, `--jobs`, `--resolution`, `--dry-run`; `download-all` is all-download mapping. SIGINT is idempotent `cancelled` exit 130.
+- Existing download coordinator receives optional resolution, AbortSignal, and progress callback; no GraphQL/auth/yt-dlp flow rewrite. Contract suite 13 tests; full suite 135 tests passed; tsc passed.
+
+## [2026-08-04] Task 3 Tauri v2 scaffold
+- Added `src-tauri/` Tauri v2 shell with no Rust commands or downloader logic. Frontend is static `src-tauri/frontend/` shell with stable selectors for collections, download actions, settings, and report history.
+- Exact Windows target enforced twice: npm Tauri scripts pass `--target x86_64-pc-windows-msvc`; Rust `compile_error!` rejects non-Windows x86_64 MSVC builds. Host matched exact target.
+- Resources declared for `../fb-saved-dl.exe` and `../spike/yt-dlp.exe`; no cookies, profiles, media, or raw cookie values embedded. Windows icon generated from local SVG.
+- Verification: frontend TypeScript check, frontend build, target-guarded `cargo check`, bounded Tauri dev readiness, and `git diff --check` passed. Evidence: `.omo/evidence/task-3-tauri-scaffold.log`; initial schema/icon blockers and fixes in `.omo/evidence/task-3-tauri-scaffold-error.log`.
+
+## [2026-08-04] Task 4 deterministic GUI process harness
+- Added test-only `test/fixtures/fake-engine.mjs` with allowlisted scenarios: success, partial, failure, delayed, ignored termination, and malformed JSON. It emits synthetic T2 JSONL only; no cookie input or network.
+- Added `test/process-harness.ts`: Node `spawn`, bounded capture timeout, diagnostic redaction, and Windows `taskkill /T /F` tree cleanup with a 5-second bound.
+- Added `test/fake-engine.test.ts`: reuses `parseEngineJsonl` for ordering/schema checks and verifies exit codes, delayed output, malformed/timeout sanitization, and descendant cleanup. Targeted 6/6 and full 141/141 tests passed; tsc/build passed.
+
+## [2026-08-04] Task 5 engine adapter lifecycle
+- Reworked `src/engine-adapter.ts` to isolate operation state per child, use `validateEngineEvent` for every JSONL line, parse the final buffered line, and emit exactly one terminal callback after exit/cancel/timeout/protocol classification.
+- Spawn `error` plus `close` is guarded by one capture path; `ENOENT` maps to `missing-engine`, other spawn errors map to `error`. Default timeout remains 120 seconds; tree cleanup uses existing 5-second Windows helper.
+- Added incomplete-output and spawn-race coverage in `test/engine-adapter.test.ts` and fixture. Targeted 9/9, full 150/150, tsc, build, and diff check passed. Evidence: `.omo/evidence/task-5-engine-adapter.log` and `task-5-engine-adapter-error.log`; secret/process scans clean.
+
+## [2026-08-04] Task 6 settings and persistence
+- Added frontend settings module with injected storage/path checks, JSON reload/reset/defaults, jobs 1-8 validation, and resolutions 360/480/720/1080.
+- Tauri production path uses official `app.path().app_local_data_dir()/settings.json` commands; only settings paths/scalars serialize, never cookie contents.
+- Settings panel exposes accessible labels, stable ids/data-testid selectors, inline errors, keyboard-submit save, and reset defaults.
+- Focused settings tests 3/3, full suite 153/153, frontend check/build, root TypeScript, target cargo check, and diff check pass. Browser screenshot QA blocked because Chrome executable is not installed.
+
+## [2026-08-04] Task 6 verification hardening
+- Prior T6 implementation had an allowlist gap: frontend `loadSettings` spread arbitrary JSON fields, so a persisted `cookieContents` key could re-enter live state. Fixed with five-field reconstruction in `src-tauri/frontend/settings.ts`; regression test now proves sentinel exclusion.
+- Added deterministic Windows-style path test through injected `PathChecks`; existing validation blocks missing cookie/output/yt-dlp paths and CLI-incompatible jobs/resolutions before persistence.
+- Confirmed Rust `load_settings`, `save_settings`, and `reset_settings` are registered in `generate_handler`; Rust app-local JSON remains the Tauri store and malformed JSON falls back to defaults.
+- Verification rerun: focused settings 5/5, full Vitest 155/155, root tsc, frontend check/build, production build, target cargo check, and `git diff --check` all exit 0. No raw cookie content; sentinel only in supplied test inputs/assertions.
+
+## [2026-08-04] Task 7 collections/download controls complete
+- Added `src-tauri/frontend/controller.ts`: one busy guard, exact `download-collection` ID and `download-all` request mapping, dry-run/settings preservation, JSONL event routing, terminal refresh, and sanitized diagnostics.
+- Replaced placeholder collection cards in `src-tauri/frontend/main.ts` with event-backed Unicode-safe names/counts, zero-count state, per-collection download/preview buttons, all-download/preview buttons, progress, terminal, empty, and error states. Existing T6 settings panel remains wired.
+- Added thin Tauri commands in `src-tauri/src/main.rs` for bundled EXE argv construction and JSONL event collection; Rust contains no downloader logic.
+- Added `test/frontend-controller.test.ts`: 5 deterministic tests covering required T7 flows. Focused 5/5, full 160/160, frontend/root TypeScript, frontend build, target cargo check, and diff check all exit 0. TypeScript LSP unavailable; Rust LSP timed out, compiler checks authoritative.
+
+## [2026-08-04] Task 8 report lifecycle and history complete
+- Added `src-tauri/frontend/report.ts`: report records store timestamp, operation type, collection, output path, duration, item counts, failures, exit code, and terminal status. Aggregate status derives from item failures; completed + failures becomes partial, never success.
+- Reports persist in injected local storage under `fb-saved-dl.reports.v1`, newest-first, capped at 50 records. Cookie values, sensitive diagnostics, and `COOKIE_SENTINEL_123` are redacted before persistence.
+- Controller preserves T5/T7 busy and terminal semantics, captures thrown engine errors as failed reports, and passes exact collection IDs into report metadata. Main renders stable history records with accessible detail/error disclosure.
+- Verification: focused 15/15, full 170/170, root/frontend TypeScript checks, frontend/root builds, target cargo check, diff check, and secret scan passed. Evidence: `.omo/evidence/task-8-reports.log`, `.omo/evidence/task-8-reports-error.log`.
+- Post-review hardening: timeout/cancel records retain latest progress-derived completed/failed counts; focused suite is now 16/16 and frontend compiler/build remain clean.
+T9: Tauri config already bundles ../fb-saved-dl.exe and ../spike/yt-dlp.exe. Rust resolves downloader engine from app.path().resource_dir(), avoiding source-relative paths in packaged mode. Direct x86_64-pc-windows-msvc release build passed and copied both resources under release/_up_.
+ T10: Fresh SEA artifact was required; prior fb-saved-dl.exe rejected current --engine-jsonl support. Engine mode now validates cookie path before browser launch, preventing missing-cookie hangs. Live list-collections passed in 73s; download-all dry-run timed out at 120s and was classified LIVE_SESSION_TIMEOUT.
+
+## [2026-08-04] Final-wave packaged GUI repair
+- Rust `src-tauri/src/main.rs` now uses piped line streaming, shared JSONL schema/order validation, deferred terminal emission until EOF and process status validation, 120s timeout, `taskkill /T /F` tree cleanup, cancellation command, and app-exit cleanup. Blank/malformed/unknown/missing/post-terminal/EOF-without-terminal and nonzero-success paths emit sanitized failure events.
+- `src-tauri/frontend/main.ts` now uses `createTauriEngineClient`: official Tauri v2 `invoke()` commands `list_collections`/`run_engine` plus `event.listen('engine-event')`; no fake client in Tauri mode. `src-tauri/frontend/controller.ts` accumulates progress completed/failed counts across events for timeout/cancel reports.
+- `src/engine-adapter.ts` now lets protocol errors override prior terminals and rejects completed terminals with nonzero process exit. Added deterministic fixture/tests for post-terminal corruption, nonzero exit, cumulative reports, and invoke command/event wiring.
+- Verification: `npm test` 18 files/176 tests PASS; `npx tsc --noEmit`, `npm run frontend:check`, `npm run frontend:build`, `npm run build`, `cargo check --target x86_64-pc-windows-msvc`, and `git diff --check` PASS. TypeScript LSP unavailable; Rust LSP timed out; compiler/build authority clean. No live Facebook operation or real cookie used.
