@@ -29,6 +29,7 @@ describe('engine JSONL parser', () => {
     ['missing required field', JSON.stringify({ type: 'progress', operationId: 'op', videoId: 'v', completed: 0, total: 1 }) + '\n'],
     ['invalid collection count', JSON.stringify({ type: 'collections', operationId: 'op', collections: [{ id: '1', name: 'x', count: -1 }] }) + '\n'],
     ['invalid progress count', JSON.stringify({ type: 'progress', operationId: 'op', collectionId: '1', videoId: 'v', completed: -1, total: 1 }) + '\n'],
+    ['invalid status message', JSON.stringify({ type: 'status', operationId: 'op' }) + '\n'],
     ['EOF without terminal', JSON.stringify({ type: 'collections', operationId: 'op', collections }) + '\n'],
     ['duplicate terminal', JSON.stringify(terminal) + '\n' + JSON.stringify(terminal) + '\n'],
     ['post-terminal event', JSON.stringify(terminal) + '\n' + JSON.stringify({ type: 'progress', operationId: 'op', collectionId: '1', videoId: 'v', completed: 1, total: 1 }) + '\n'],
@@ -46,7 +47,7 @@ describe('engine JSONL CLI', () => {
     const services: CliServices = {
       listCollections: vi.fn(async () => collections),
       downloadAll: vi.fn(async () => ({ downloaded: 1, failed: 0, skipped: 0 })),
-      downloadCollection: vi.fn(async (_id, opts) => { opts.onProgress?.({ collectionId: '207', videoId: 'v', completed: 1, total: 1 }); return { downloaded: 1, failed: 0, skipped: 0 }; }),
+      downloadCollection: vi.fn(async (_id, opts) => { opts.onStatus?.('Scanning saved items — page 1 (25 found so far)...'); opts.onCollections?.([...collections]); opts.onProgress?.({ collectionId: '207', videoId: 'v', completed: 1, total: 1 }); return { downloaded: 1, failed: 0, skipped: 0 }; }),
     };
     const stdout = captureStdout();
     try {
@@ -54,7 +55,9 @@ describe('engine JSONL CLI', () => {
       expect(code).toBe(0);
       const lines = stdout.text.trimEnd().split('\n');
       const events = parseEngineJsonl(stdout.text);
-      expect(events.map((event) => event.type)).toEqual(['collections', 'progress', 'completed']);
+      expect(events.map((event) => event.type)).toEqual(['status', 'collections', 'progress', 'completed']);
+      // Option 9: download path never runs a separate collection pass.
+      expect(services.listCollections).not.toHaveBeenCalled();
       expect(JSON.parse(lines[0]).operationId).toBeTypeOf('string');
       expect(stdout.text).not.toContain('COOKIE_SENTINEL_123');
       expect(services.downloadCollection).toHaveBeenCalledWith('207', expect.objectContaining({ cookiesFile: 'test/fixtures/cookies.txt', jobs: 3, resolution: 720, dryRun: false }));

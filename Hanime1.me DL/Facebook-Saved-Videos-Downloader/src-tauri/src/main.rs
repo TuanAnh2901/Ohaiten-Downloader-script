@@ -25,6 +25,10 @@ const JOBS_MAX: u8 = 8;
 const RESOLUTIONS: [u16; 4] = [360, 480, 720, 1080];
 const YTDLP_VERSION: &str = "2026.07.04";
 const YTDLP_SHA256: &str = "52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8";
+// Safety net only: engine ops (browser launch + FB pagination + downloads) are
+// unbounded by nature. Real control is the Cancel button; async commands keep
+// the UI alive while this runs. See anti-pattern: 120s whole-op timeout.
+const ENGINE_TIMEOUT_SECS: u64 = 1800;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -84,7 +88,6 @@ struct EngineRequest {
     command: String,
     collection_id: Option<String>,
     settings: Settings,
-    dry_run: bool,
 }
 
 struct ActiveEngine(Arc<Mutex<EngineProcess>>);
@@ -92,9 +95,17 @@ struct ActiveEngine(Arc<Mutex<EngineProcess>>);
 #[derive(Default)]
 struct EngineProcess { pid: Option<u32>, cancelled: bool }
 
+// Tauri rewrites `../`-declared bundled resources to `$RESOURCE/_up_/`.
+fn find_bundled(resource_dir: &Path, relative: &str) -> Option<PathBuf> {
+    let up = resource_dir.join("_up_").join(relative);
+    if up.is_file() { return Some(up); }
+    let direct = resource_dir.join(relative);
+    direct.is_file().then_some(direct)
+}
+
 fn engine_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let path = app.path().resource_dir().map_err(|err| err.to_string())?.join("fb-saved-dl.exe");
-    if path.is_file() { Ok(path) } else { Err("Downloader engine is missing from this installation.".into()) }
+    let resource_dir = app.path().resource_dir().map_err(|err| err.to_string())?;
+    find_bundled(&resource_dir, "fb-saved-dl.exe").ok_or_else(|| "Downloader engine is missing from this installation.".into())
 }
 
 fn managed_yt_dlp_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -113,8 +124,9 @@ fn resolve_yt_dlp(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         .and_then(|output| String::from_utf8(output.stdout).ok())
         .and_then(|stdout| stdout.lines().map(PathBuf::from).find(|path| path.is_file()));
     if let Some(path) = path { return Ok(path); }
-    let bundled = app.path().resource_dir().map_err(|err| err.to_string())?.join("spike").join("yt-dlp.exe");
-    path_candidate(bundled).ok_or_else(|| "yt-dlp is missing. Open Settings and choose Install yt-dlp.".into())
+    let resource_dir = app.path().resource_dir().map_err(|err| err.to_string())?;
+    if let Some(path) = find_bundled(&resource_dir, "spike/yt-dlp.exe") { return Ok(path); }
+    Err("yt-dlp is missing. Open Settings and choose Install yt-dlp.".into())
 }
 
 fn download_file(url: &str, destination: &Path) -> Result<(), String> {
@@ -174,7 +186,7 @@ fn install_yt_dlp_command(app: tauri::AppHandle) -> Result<YtDlpStatus, String> 
     yt_dlp_status(app)
 }
 
-fn engine_args(settings: &Settings, command: &str, collection_id: Option<&str>, dry_run: bool) -> Result<Vec<String>, String> {
+fn engine_args(settings: &Settings, command: &str, collection_id: Option<&str>) -> Result<Vec<String>, String> {
     if command == "download-collection" && collection_id.is_none() { return Err("Collection ID is required.".into()); }
     let mut args = vec!["--engine-jsonl".into(), command.into()];
     if let Some(id) = collection_id { args.push(id.into()); }
@@ -184,7 +196,6 @@ fn engine_args(settings: &Settings, command: &str, collection_id: Option<&str>, 
         "--jobs".into(), settings.jobs.to_string(),
         "--resolution".into(), settings.resolution.to_string(),
     ]);
-    if dry_run { args.push("--dry-run".into()); }
     Ok(args)
 }
 
@@ -209,11 +220,15 @@ fn validate_event(value: &Value, terminal_seen: bool, collections_seen: bool, pr
             let collections = object.get("collections").and_then(Value::as_array).ok_or_else(|| protocol_error("collections must be an array"))?;
             if collections.iter().any(|item| {
                 let item = item.as_object();
-                !required_string(item.and_then(|v| v.get("id"))) || item.and_then(|v| v.get("name")).and_then(Value::as_str).is_none() || !non_negative_int(item.and_then(|v| v.get("count")))
+                let count = item.and_then(|v| v.get("count"));
+                !required_string(item.and_then(|v| v.get("id"))) || item.and_then(|v| v.get("name")).and_then(Value::as_str).is_none() || (count.is_some() && !non_negative_int(count))
             }) { return Err(protocol_error("invalid collection")); }
         }
         "progress" => {
             if !required_string(object.get("collectionId")) || !required_string(object.get("videoId")) || !non_negative_int(object.get("completed")) || !non_negative_int(object.get("total")) { return Err(protocol_error("invalid progress")); }
+        }
+        "status" => {
+            if !required_string(object.get("message")) { return Err(protocol_error("invalid status")); }
         }
         "completed" | "partial" => {
             if !non_negative_int(object.get("successCount")) || !non_negative_int(object.get("failureCount")) || !matches!(object.get("exitCode").and_then(Value::as_i64), Some(0 | 1)) { return Err(protocol_error("invalid result terminal")); }
@@ -234,18 +249,44 @@ fn error_event(operation_id: &str, message: &str, exit_code: i64) -> Value {
     serde_json::json!({ "type": "error", "operationId": operation_id, "message": message.chars().take(500).collect::<String>(), "exitCode": exit_code })
 }
 
+fn engine_log_path(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let dir = app.path().app_log_dir().ok()?;
+    fs::create_dir_all(&dir).ok()?;
+    Some(dir.join("engine.log"))
+}
+
+// Epoch-second stamp (no chrono dep); engine-side TS log lines use ISO.
+// Both land in the same file — one debug timeline for a run.
+fn append_log(app: &tauri::AppHandle, message: &str) {
+    let Some(path) = engine_log_path(app) else { return };
+    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
+        use std::io::Write;
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let _ = writeln!(file, "[{stamp}] {message}");
+    }
+}
+
 fn execute_engine(app: &tauri::AppHandle, active: &ActiveEngine, args: Vec<String>) -> Result<(), String> {
     let operation_id = format!("tauri-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
     let yt_dlp = resolve_yt_dlp(app)?;
+    let profile_dir = app.path().app_local_data_dir().map_err(|err| err.to_string())?.join("playwright-profile");
+    fs::create_dir_all(&profile_dir).map_err(|err| format!("Unable to prepare browser profile: {err}"))?;
+    let log_path = engine_log_path(app);
     let mut child = Command::new(engine_path(app)?)
-        .args(args)
+        .args(args.clone())
         .env("FB_SAVED_DLP_YT_DLP_PATH", yt_dlp)
+        .env("FB_SAVED_DLP_PROFILE_DIR", profile_dir)
+        .env("FB_SAVED_DLP_LOG_FILE", log_path.clone().unwrap_or_default())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .creation_flags(0x08000000)
         .spawn()
         .map_err(|err| format!("Unable to start downloader engine: {err}"))?;
     let pid = child.id();
+    append_log(app, &format!("spawn pid={pid} args={}", args.join(" ")));
     *active.0.lock().map_err(|_| "Engine state unavailable.".to_string())? = EngineProcess { pid: Some(pid), cancelled: false };
     let stdout = child.stdout.take().ok_or_else(|| "Unable to read downloader engine output.".to_string())?;
     let (sender, receiver) = mpsc::channel::<Result<Option<String>, String>>();
@@ -267,12 +308,13 @@ fn execute_engine(app: &tauri::AppHandle, active: &ActiveEngine, args: Vec<Strin
     let mut protocol: Option<String> = None;
     loop {
         let cancelled = active.0.lock().ok().map(|state| state.cancelled).unwrap_or(false);
-        if started.elapsed() >= Duration::from_secs(120) {
+        if started.elapsed() >= Duration::from_secs(ENGINE_TIMEOUT_SECS) {
             terminate_tree(pid);
+            append_log(app, "engine operation timed out");
             protocol = Some("Engine operation timed out.".into());
             break;
         }
-        if cancelled { terminate_tree(pid); protocol = Some("Operation cancelled.".into()); break; }
+        if cancelled { terminate_tree(pid); append_log(app, "operation cancelled"); protocol = Some("Operation cancelled.".into()); break; }
         match receiver.recv_timeout(Duration::from_millis(100)) {
             Ok(Ok(Some(line))) => {
                 let line = line.trim_end_matches(['\r', '\n']);
@@ -300,6 +342,8 @@ fn execute_engine(app: &tauri::AppHandle, active: &ActiveEngine, args: Vec<Strin
     if protocol.is_some() || cancelled { terminate_tree(pid); }
     let status = child.wait().map_err(|err| format!("Unable to finish downloader engine: {err}"))?;
     *active.0.lock().map_err(|_| "Engine state unavailable.".to_string())? = EngineProcess::default();
+    if let Some(message) = &protocol { append_log(app, &format!("engine aborted: {message}")); }
+    if let Some(event) = &terminal { append_log(app, &format!("engine terminal: {event}")); }
     let result = if cancelled { Err("Operation cancelled.".to_string()) }
         else if let Some(message) = protocol { Err(message) }
         else if terminal.is_none() { Err("Engine returned no terminal event.".into()) }
@@ -317,16 +361,18 @@ fn execute_engine(app: &tauri::AppHandle, active: &ActiveEngine, args: Vec<Strin
     Ok(())
 }
 
+// async: engine ops block for minutes (browser + pagination + downloads);
+// sync commands run on the main thread and freeze the window (Not Responding).
 #[tauri::command]
-fn list_collections(app: tauri::AppHandle, active: State<'_, ActiveEngine>, settings: Settings) -> Result<(), String> {
+async fn list_collections(app: tauri::AppHandle, active: State<'_, ActiveEngine>, settings: Settings) -> Result<(), String> {
     validate(&settings)?;
-    execute_engine(&app, &active, engine_args(&settings, "list-collections", None, false)?)
+    execute_engine(&app, &active, engine_args(&settings, "list-collections", None)?)
 }
 
 #[tauri::command]
-fn run_engine(app: tauri::AppHandle, active: State<'_, ActiveEngine>, request: EngineRequest) -> Result<(), String> {
+async fn run_engine(app: tauri::AppHandle, active: State<'_, ActiveEngine>, request: EngineRequest) -> Result<(), String> {
     validate(&request.settings)?;
-    execute_engine(&app, &active, engine_args(&request.settings, &request.command, request.collection_id.as_deref(), request.dry_run)?)
+    execute_engine(&app, &active, engine_args(&request.settings, &request.command, request.collection_id.as_deref())?)
 }
 
 #[tauri::command]
@@ -352,4 +398,40 @@ fn main() {
                 }
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_dir(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("fbdl-{tag}-{}", std::process::id()))
+    }
+
+    #[test]
+    fn finds_bundled_under_up_dir() {
+        let dir = temp_dir("up");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("_up_")).unwrap();
+        fs::write(dir.join("_up_").join("fb-saved-dl.exe"), b"x").unwrap();
+        assert_eq!(find_bundled(&dir, "fb-saved-dl.exe"), Some(dir.join("_up_").join("fb-saved-dl.exe")));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn falls_back_to_resource_root() {
+        let dir = temp_dir("direct");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("fb-saved-dl.exe"), b"x").unwrap();
+        assert_eq!(find_bundled(&dir, "fb-saved-dl.exe"), Some(dir.join("fb-saved-dl.exe")));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn missing_engine_returns_none() {
+        let dir = temp_dir("missing");
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(find_bundled(&dir, "fb-saved-dl.exe"), None);
+    }
 }

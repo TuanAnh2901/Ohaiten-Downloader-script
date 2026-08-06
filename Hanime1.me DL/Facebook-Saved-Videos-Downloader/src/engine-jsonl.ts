@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import type { CollectionSummary, CliServices, DownloadOptions, DownloadResult } from './index.js';
+import { log, setLogFile } from './log.js';
 import {
   AUTH_FAILED,
   COOKIES_INVALID,
@@ -13,9 +14,10 @@ import {
 } from './errors.js';
 
 export type TerminalType = 'completed' | 'partial' | 'failed' | 'cancelled' | 'timeout' | 'error';
-export type EngineEvent = CollectionEvent | ProgressEvent | TerminalEvent;
+export type EngineEvent = CollectionEvent | ProgressEvent | StatusEvent | TerminalEvent;
 export interface CollectionEvent { type: 'collections'; operationId: string; collections: CollectionSummary[] }
 export interface ProgressEvent { type: 'progress'; operationId: string; collectionId: string; videoId: string; completed: number; total: number }
+export interface StatusEvent { type: 'status'; operationId: string; message: string }
 export type TerminalEvent =
   | { type: 'completed' | 'partial'; operationId: string; successCount: number; failureCount: number; exitCode: 0 | 1 }
   | { type: 'failed' | 'cancelled' | 'timeout' | 'error'; operationId: string; message: string; exitCode: 3 | 130 | 124 | 3 };
@@ -34,7 +36,9 @@ export function validateEngineEvent(value: unknown, terminalSeen: boolean): Engi
   if (value.type === 'collections') {
     if (!Array.isArray(value.collections)) throw protocolError('collections must be an array');
     for (const item of value.collections) {
-      if (!isRecord(item) || !requiredString(item.id) || typeof item.name !== 'string' || !nonNegativeInt(item.count)) throw protocolError('invalid collection');
+      // count is optional — the fast LeftRail refresh has no counts until a
+      // download run writes counts.json.
+      if (!isRecord(item) || !requiredString(item.id) || typeof item.name !== 'string' || (item.count !== undefined && !nonNegativeInt(item.count))) throw protocolError('invalid collection');
     }
     return value as unknown as CollectionEvent;
   }
@@ -42,6 +46,10 @@ export function validateEngineEvent(value: unknown, terminalSeen: boolean): Engi
     for (const field of PROGRESS_FIELDS) if (!(field in value)) throw protocolError(`progress missing ${field}`);
     if (!requiredString(value.collectionId) || !requiredString(value.videoId) || !nonNegativeInt(value.completed) || !nonNegativeInt(value.total)) throw protocolError('invalid progress');
     return value as unknown as ProgressEvent;
+  }
+  if (value.type === 'status') {
+    if (!requiredString(value.message)) throw protocolError('invalid status');
+    return value as unknown as StatusEvent;
   }
   if (!TERMINALS.has(value.type as TerminalType)) throw protocolError(`unknown event type: ${value.type}`);
   if (value.type === 'completed' || value.type === 'partial') {
@@ -120,25 +128,17 @@ function resultTerminal(operationId: string, result: DownloadResult): TerminalEv
 }
 
 export async function runEngineJsonl(argv: string[], services: CliServices): Promise<number> {
+  setLogFile(process.env.FB_SAVED_DLP_LOG_FILE ?? '');
   const operationId = randomUUID();
   const controller = new AbortController();
   let terminal = false;
   const cancel = () => controller.abort();
   process.once('SIGINT', cancel);
-  const finish = (event: TerminalEvent): number => { if (!terminal) { terminal = true; emit(event); } return event.exitCode; };
+  const finish = (event: TerminalEvent): number => { if (!terminal) { terminal = true; emit(event); log('terminal', JSON.stringify(event)); } return event.exitCode; };
   try {
     const parsed = parseEngineArgs(argv);
+    log('operation start', JSON.stringify(parsed));
     if (!existsSync(parsed.cookies)) throw new FbSavedCliError(COOKIES_INVALID, `cookies file not found: ${parsed.cookies}`);
-    if (parsed.command === 'list-collections') {
-      const collections = await services.listCollections(parsed.cookies);
-      assertCollections(collections);
-      emit({ type: 'collections', operationId, collections });
-      return finish({ type: 'completed', operationId, successCount: collections.length, failureCount: 0, exitCode: 0 });
-    }
-    const collections = await services.listCollections(parsed.cookies);
-    assertCollections(collections);
-    emit({ type: 'collections', operationId, collections });
-    if (controller.signal.aborted) return finish({ type: 'cancelled', operationId, message: 'operation cancelled', exitCode: 130 });
     const options: DownloadOptions = {
       cookiesFile: parsed.cookies,
       outputDir: parsed.outputDir,
@@ -147,8 +147,19 @@ export async function runEngineJsonl(argv: string[], services: CliServices): Pro
       ytDlpPath: parsed.ytDlpPath,
       resolution: parsed.resolution,
       signal: controller.signal,
+      // The walk already enumerates collections with real counts — emit them
+      // instead of a second LeftRail pass (option 9: one walk, not two).
+      onCollections: (collections) => { assertCollections(collections); emit({ type: 'collections', operationId, collections }); log('collections', `${collections.length} collections`); },
       onProgress: (progress) => emit({ type: 'progress', operationId, ...progress }),
+      onStatus: (message) => { emit({ type: 'status', operationId, message }); log('status', message); },
     };
+    if (parsed.command === 'list-collections') {
+      const collections = await services.listCollections(parsed.cookies, parsed.outputDir);
+      assertCollections(collections);
+      emit({ type: 'collections', operationId, collections });
+      log('collections', `${collections.length} collections`);
+      return finish({ type: 'completed', operationId, successCount: collections.length, failureCount: 0, exitCode: 0 });
+    }
     const resultPromise = parsed.command === 'download-collection' ? services.downloadCollection(parsed.collectionId!, options) : services.downloadAll(options);
     const result = await Promise.race([
       resultPromise,
@@ -159,6 +170,7 @@ export async function runEngineJsonl(argv: string[], services: CliServices): Pro
   } catch (err) {
     if (controller.signal.aborted) return finish({ type: 'cancelled', operationId, message: 'operation cancelled', exitCode: 130 });
     const code = err instanceof FbSavedCliError ? exitCodeFor(err.code) : EXIT_PARTIAL;
+    log('error', diagnostic(err));
     return finish({ type: 'error', operationId, message: diagnostic(err), exitCode: code === EXIT_FATAL ? 3 : code === EXIT_NOTHING ? 3 : 3 });
   } finally { process.removeListener('SIGINT', cancel); }
 }
