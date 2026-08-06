@@ -123,7 +123,7 @@ describe('fb-saved-dl CLI', () => {
       expect(code).toBe(EXIT_PARTIAL);
       expect(io.confirm).toHaveBeenCalledOnce();
       expect(String(io.confirm.mock.calls[0][0])).toContain('Proceed?');
-      expect(services.listCollections).toHaveBeenCalledWith(COOKIES);
+      expect(services.listCollections).toHaveBeenCalledWith(COOKIES, './downloads');
       expect(services.downloadAll).toHaveBeenCalledWith({
         cookiesFile: COOKIES,
         outputDir: './downloads',

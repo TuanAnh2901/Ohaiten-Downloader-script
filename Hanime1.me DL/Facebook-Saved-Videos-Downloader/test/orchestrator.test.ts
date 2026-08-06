@@ -8,15 +8,14 @@
 // ---------------------------------------------------------------------------
 
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { chromium, type Browser, type Route } from 'playwright';
-import { collectRelayEdges } from '../src/graphql.js';
-import { ALL_SAVES_DOC_ID } from '../src/graphql.js';
+import { collectRelayEdges, ALL_SAVES_DOC_ID, COLLECTION_ITEMS_DOC_ID } from '../src/graphql.js';
 import { LEFT_RAIL_DOC_ID } from '../src/collections.js';
 import { NO_VIDEOS } from '../src/errors.js';
 import { parseItemNode, type SavedItem } from '../src/items.js';
@@ -44,6 +43,10 @@ const LR1 = readFileSync(
 );
 const LR2 = readFileSync(
   fileURLToPath(new URL('./fixtures/graphql-collections-page2.json', import.meta.url)),
+  'utf-8',
+);
+const CI = readFileSync(
+  fileURLToPath(new URL('./fixtures/graphql-collection-items.json', import.meta.url)),
   'utf-8',
 );
 const COOKIES = fileURLToPath(new URL('./fixtures/cookies.txt', import.meta.url));
@@ -177,7 +180,8 @@ function postedCursor(postData: string | null): string | null {
   return vars.cursor;
 }
 
-/** Serve the real fixtures: items doc → P1/P2 by cursor, LeftRail → LR1/LR2. */
+/** Serve the real fixtures: items doc → P1/P2 by cursor, LeftRail → LR1/LR2,
+ *  collection-items doc → CI (single page, no cursor). */
 function defaultGraphQL(route: Route): void {
   const post = route.request().postData();
   const docId = postedDocId(post);
@@ -185,6 +189,7 @@ function defaultGraphQL(route: Route): void {
   let body: string;
   if (docId === ALL_SAVES_DOC_ID) body = cursor ? P2 : P1;
   else if (docId === LEFT_RAIL_DOC_ID) body = cursor ? LR2 : LR1;
+  else if (docId === COLLECTION_ITEMS_DOC_ID) body = CI;
   else body = '{"data":{"viewer":{}}}';
   void route.fulfill({ status: 200, contentType: 'application/json', body });
 }
@@ -336,6 +341,28 @@ describe('downloadAll', () => {
     }
   }, 30000);
 
+  it('writes counts.json cache with real counts from the walk', async () => {
+    const dir = tempDir();
+    try {
+      const { spawnFn, procs } = makeFakeSpawn();
+      const { launchFn, closed } = fakeLaunch();
+      const p = downloadAll(baseOpts(dir, { spawnFn, launchFn }));
+      await drainPool(procs, 10);
+      const result = await p;
+
+      expect(result).toEqual({ downloaded: 10, failed: 0, skipped: 0 });
+      const cache = JSON.parse(readFileSync(join(dir, 'counts.json'), 'utf-8')) as {
+        counts: Record<string, number>;
+      };
+      // Same counts the old full-walk listCollectionsService returned.
+      expect(cache.counts['165363141591607']).toBe(1); // Anime
+      expect(cache.counts['426792272115358']).toBe(2); // Download
+      expect(closed).toHaveLength(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30000);
+
   it('dedupes within the run — later duplicate videoId is skipped as duplicate', async () => {
     const dir = tempDir();
     try {
@@ -436,18 +463,51 @@ describe('downloadAll', () => {
 });
 
 describe('downloadCollection', () => {
-  it('downloads only the requested collection into its folder', async () => {
+  it('walks ONLY the collection doc (never all-saves) and downloads into its folder', async () => {
     const dir = tempDir();
     try {
       const { spawnFn, procs } = makeFakeSpawn();
-      const { launchFn, closed } = fakeLaunch();
+      const docIds: string[] = [];
+      const { launchFn, closed } = fakeLaunch((route) => {
+        docIds.push(postedDocId(route.request().postData()) ?? '');
+        defaultGraphQL(route);
+      });
       const p = downloadCollection('165363141591607', baseOpts(dir, { spawnFn, launchFn }));
-      await drainPool(procs, 1); // only the Anime save
+      await drainPool(procs, 2); // both Anime videos from the CI fixture
       const result = await p;
 
-      expect(result).toEqual({ downloaded: 1, failed: 0, skipped: 0 });
+      expect(result).toEqual({ downloaded: 2, failed: 0, skipped: 0 });
       expect(closed).toHaveLength(1);
-      expect(outPathArg(procs[0])).toBe(join(dir, 'Anime', F_ANIME));
+      // Regression (user complaint): download-collection must NOT walk the
+      // all-saves stream — only the per-collection doc + LeftRail names.
+      expect(docIds).not.toContain(ALL_SAVES_DOC_ID);
+      expect(docIds).toContain(COLLECTION_ITEMS_DOC_ID);
+      expect(docIds).toContain(LEFT_RAIL_DOC_ID);
+      // Both videos land in the Anime folder (name from LeftRail).
+      const outPaths = procs.map((p) => outPathArg(p));
+      for (const out of outPaths) {
+        expect(out.startsWith(join(dir, 'Anime', ''))).toBe(true);
+      }
+      expect(outPaths).toContain(join(dir, 'Anime', F_ANIME));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  it('emits onStatus phase messages from launch through downloads', async () => {
+    const dir = tempDir();
+    try {
+      const { spawnFn, procs } = makeFakeSpawn();
+      const { launchFn } = fakeLaunch();
+      const messages: string[] = [];
+      const p = downloadCollection('165363141591607', baseOpts(dir, { spawnFn, launchFn, onStatus: (m) => messages.push(m) }));
+      await drainPool(procs, 2);
+      await p;
+
+      expect(messages[0]).toBe('Launching browser and signing in...');
+      expect(messages.some((m) => m.startsWith('Scanning collection videos — page 1'))).toBe(true);
+      expect(messages.some((m) => /^Found \d+ videos in collection/.test(m))).toBe(true);
+      expect(messages[messages.length - 1]).toBe('Preparing downloads...');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -472,18 +532,42 @@ describe('downloadCollection', () => {
 });
 
 describe('listCollectionsService', () => {
-  it('returns {id, name, count} with real counts from the containing_lists aggregation', async () => {
-    const { launchFn, closed } = fakeLaunch();
-    const collections = await listCollectionsService(COOKIES, launchFn);
+  it('is LeftRail-only and merges cached counts', async () => {
+    const dir = tempDir();
+    try {
+      writeFileSync(
+        join(dir, 'counts.json'),
+        JSON.stringify({ counts: { '375610470566872': 4, bogus: 'x', negative: -1 } }),
+      );
+      const docIds: string[] = [];
+      const { launchFn, closed } = fakeLaunch((route) => {
+        docIds.push(postedDocId(route.request().postData()) ?? '');
+        defaultGraphQL(route);
+      });
+      const collections = await listCollectionsService(COOKIES, dir, launchFn);
 
-    expect(collections).toHaveLength(10); // authoritative LeftRail set incl. empty
-    expect(closed).toHaveLength(1);
-    // Count REQUIRED: empty collections get 0, never undefined.
-    expect(collections.every((c) => typeof c.count === 'number')).toBe(true);
-    const byName = Object.fromEntries(collections.map((c) => [c.name, c.count]));
-    expect(byName['Anime']).toBe(1);
-    expect(byName['Download']).toBe(2);
-    expect(byName['Ahihi']).toBe(0);
-    expect(byName['Sản phẩm']).toBe(0);
+      expect(collections).toHaveLength(10); // authoritative LeftRail set incl. empty
+      // Option 1: no all-saves walk — only the two LeftRail pages.
+      expect(docIds).toEqual(Array(2).fill(LEFT_RAIL_DOC_ID));
+      // Cache merged; invalid entries dropped.
+      expect(collections.find((c) => c.id === '375610470566872')?.count).toBe(4);
+      expect(closed).toHaveLength(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  it('returns LeftRail collections with undefined counts when no cache exists', async () => {
+    const dir = tempDir();
+    try {
+      const { launchFn, closed } = fakeLaunch();
+      const collections = await listCollectionsService(COOKIES, dir, launchFn);
+
+      expect(collections).toHaveLength(10);
+      expect(collections.every((c) => c.count === undefined)).toBe(true);
+      expect(closed).toHaveLength(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   }, 30000);
 });

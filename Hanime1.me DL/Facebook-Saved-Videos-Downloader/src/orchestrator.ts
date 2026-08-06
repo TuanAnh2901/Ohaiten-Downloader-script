@@ -1,17 +1,19 @@
 /**
  * Orchestrator: the download-all / download-collection flows.
  *
- * Enumeration uses ONE all-saves GraphQL stream (doc 27174039202273427) which
- * covers 100% of saves INCLUDING uncategorized items (spike T3) — never
- * paginate per collection (the CollectionItems doc 26605228462486746 is
- * broken with missing_required_variable_value). Collections come from the
- * LeftRail doc (27602599562734455) with counts merged from the
- * containing_lists aggregation. No save-timestamp field exists on any item
- * node (B=NONE); filename.ts already omits the prefix when absent.
+ * download-all enumerates via ONE all-saves GraphQL stream (doc
+ * 27174039202273427) which covers 100% of saves INCLUDING uncategorized
+ * items (spike T3). download-collection uses the per-collection doc
+ * 26605228462486746 (CometSaveCollectionAllItemsPaginationQuery, root path
+ * data.content_collection.collection_items) — fast path, walks only the one
+ * collection, never the all-saves stream. Collections come from the LeftRail
+ * doc (27602599562734455) with counts merged from the containing_lists
+ * aggregation. No save-timestamp field exists on any item node (B=NONE);
+ * filename.ts already omits the prefix when absent.
  */
 
 import { spawn } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { Page } from 'playwright';
 import type {
@@ -28,7 +30,7 @@ import {
 import { buildYtDlpArgs, downloadMany, type DownloadItem } from './download.js';
 import { FbSavedCliError, NO_VIDEOS } from './errors.js';
 import { buildFileName } from './filename.js';
-import { listAllSaves, type SavedItem } from './items.js';
+import { listAllSaves, listCollectionItems, type SavedItem } from './items.js';
 import { MultiProgress, type ProgressSlot } from './multiprogress.js';
 import { parseYtDlpLine } from './progress.js';
 import { Report } from './report.js';
@@ -64,6 +66,75 @@ function aggregateItems(items: SavedItem[]): ItemWithCollections[] {
   return items.map((i) => ({
     containingLists: i.collectionIds.map((id) => ({ id, name: '' })),
   }));
+}
+
+/** PaginateOpts.onPage that reports walk progress through opts.onStatus —
+ *  without it the GUI sits silent for minutes before the first progress
+ *  event and looks frozen. */
+function statusScanner(opts: OrchestratorOpts, label: string) {
+  let pageNum = 0;
+  let found = 0;
+  return (pageItems: unknown[]): void => {
+    pageNum += 1;
+    found += pageItems.length;
+    opts.onStatus?.(`${label} — page ${pageNum} (${found} found so far)...`);
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Counts cache (counts.json)
+// ---------------------------------------------------------------------------
+// The fast list-collections refresh walks LeftRail only (no per-item counts).
+// Download runs DO walk the all-saves stream, so they persist real counts
+// here and the refresh merges them — stale-by-design until the next download.
+const COUNTS_CACHE_FILE = 'counts.json';
+
+function readCountsCache(outputDir: string): Record<string, number> {
+  try {
+    const parsed = JSON.parse(
+      readFileSync(join(outputDir, COUNTS_CACHE_FILE), 'utf-8'),
+    ) as { counts?: Record<string, unknown> };
+    const counts = parsed.counts;
+    if (!counts || typeof counts !== 'object') return {};
+    const result: Record<string, number> = {};
+    for (const [id, count] of Object.entries(counts)) {
+      if (typeof count === 'number' && Number.isInteger(count) && count >= 0) result[id] = count;
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+function writeCountsCache(outputDir: string, summaries: CliCollectionSummary[]): void {
+  try {
+    mkdirSync(outputDir, { recursive: true });
+    writeFileSync(
+      join(outputDir, COUNTS_CACHE_FILE),
+      JSON.stringify(
+        {
+          updatedAt: new Date().toISOString(),
+          counts: Object.fromEntries(summaries.map((c) => [c.id, c.count ?? 0])),
+        },
+        null,
+        2,
+      ) + '\n',
+    );
+  } catch {
+    // Best-effort: a cache write failure must never fail the run.
+  }
+}
+
+/** Persist real counts and hand the collection list to the engine (option 9:
+ *  the walk already has counts — no second enumeration needed). */
+function emitCollections(
+  opts: OrchestratorOpts,
+  collections: ScrapeCollectionSummary[],
+): CliCollectionSummary[] {
+  const summaries = collections.map((c) => ({ id: c.id, name: c.name, count: c.count }));
+  writeCountsCache(opts.outputDir, summaries);
+  opts.onCollections?.(summaries);
+  return summaries;
 }
 
 // ---------------------------------------------------------------------------
@@ -258,43 +329,59 @@ async function execute(
 
 /** Download every saved video into per-collection folders + `_uncategorized/`. */
 export async function downloadAll(opts: OrchestratorOpts): Promise<DownloadResult> {
+  opts.onStatus?.('Launching browser and signing in...');
   return withBrowser(opts.cookiesFile, opts.launchFn ?? launchAuthenticated, async (page) => {
-    const items = await listAllSaves(page, { delayMs: opts.delayMs });
+    const items = await listAllSaves(page, {
+      delayMs: opts.delayMs,
+      onPage: statusScanner(opts, 'Scanning saved items'),
+    });
+    opts.onStatus?.(`Found ${items.length} videos — organizing collections...`);
     const collections = await listCollections(page, {
       items: aggregateItems(items),
       delayMs: opts.delayMs,
     });
+    emitCollections(opts, collections);
+    opts.onStatus?.('Preparing downloads...');
     return execute(opts, items, collections);
   });
 }
 
-/** Download the videos of a single collection. */
+/** Download the videos of a single collection (fast path: walks ONLY that
+ *  collection via its own GraphQL doc — never the all-saves stream). Counts
+ *  cache is NOT written here: a single-collection walk has no counts for the
+ *  other collections and would clobber the cache with zeros. */
 export async function downloadCollection(
   collectionId: string,
   opts: OrchestratorOpts,
 ): Promise<DownloadResult> {
+  opts.onStatus?.('Launching browser and signing in...');
   return withBrowser(opts.cookiesFile, opts.launchFn ?? launchAuthenticated, async (page) => {
-    const items = await listAllSaves(page, { delayMs: opts.delayMs });
-    const collections = await listCollections(page, {
-      items: aggregateItems(items),
+    const items = await listCollectionItems(page, collectionId, {
       delayMs: opts.delayMs,
+      onPage: statusScanner(opts, 'Scanning collection videos'),
     });
+    opts.onStatus?.(`Found ${items.length} videos in collection — organizing...`);
+    const collections = await listCollections(page, { delayMs: opts.delayMs });
     // index.ts checks existence before calling; this is belt-and-braces.
     if (!collections.some((c) => c.id === collectionId)) {
       throw new FbSavedCliError(NO_VIDEOS, `collection not found: ${collectionId}`);
     }
+    opts.onStatus?.('Preparing downloads...');
     return execute(opts, items, collections, collectionId);
   });
 }
 
-/** {id, name, count} for the CLI list-collections command — count REQUIRED. */
+/** {id, name, count?} — LeftRail-only refresh (option 1: ~15s, not minutes).
+ *  Counts come from the counts.json cache written by download runs; absent
+ *  until the first download. No all-saves walk, no count aggregation. */
 export async function listCollectionsService(
   cookiesFile: string,
+  outputDir: string = './downloads',
   launchFn: LaunchFn = launchAuthenticated,
 ): Promise<CliCollectionSummary[]> {
   return withBrowser(cookiesFile, launchFn, async (page) => {
-    const items = await listAllSaves(page);
-    const collections = await listCollections(page, { items: aggregateItems(items) });
-    return collections.map((c) => ({ id: c.id, name: c.name, count: c.count ?? 0 }));
+    const collections = await listCollections(page);
+    const cached = readCountsCache(outputDir);
+    return collections.map((c) => ({ id: c.id, name: c.name, count: cached[c.id] }));
   });
 }

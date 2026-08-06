@@ -29,7 +29,8 @@ import { runEngineJsonl } from './engine-jsonl.js';
 export interface CollectionSummary {
   id: string;
   name: string;
-  count: number;
+  /** Video count — absent when the fast LeftRail refresh has no cache yet. */
+  count?: number;
 }
 
 export interface DownloadOptions {
@@ -50,6 +51,14 @@ export interface DownloadOptions {
     speed?: string;
     eta?: string;
   }) => void;
+  /** Called once after enumeration with the collections and their counts
+   *  (download runs know counts from the walk; emit them so the GUI never
+   *  needs a second pass). */
+  onCollections?: (collections: CollectionSummary[]) => void;
+  /** Called with human-readable phase messages (browser launch, pagination
+   *  progress, download setup). Lets a UI show activity during the long
+   *  enumeration that precedes the first download progress event. */
+  onStatus?: (message: string) => void;
 }
 
 export interface DownloadResult {
@@ -61,7 +70,7 @@ export interface DownloadResult {
 }
 
 export interface CliServices {
-  listCollections(cookiesFile: string): Promise<CollectionSummary[]>;
+  listCollections(cookiesFile: string, outputDir?: string): Promise<CollectionSummary[]>;
   downloadAll(opts: DownloadOptions): Promise<DownloadResult>;
   downloadCollection(collectionId: string, opts: DownloadOptions): Promise<DownloadResult>;
 }
@@ -87,7 +96,7 @@ function assertCookiesFile(path: string): void {
 }
 
 function printCollectionTable(collections: CollectionSummary[]): void {
-  const rows = collections.map((c) => [c.id, c.name, String(c.count)]);
+  const rows = collections.map((c) => [c.id, c.name, String(c.count ?? '?')]);
   const widths = [0, 1, 2].map((i) =>
     Math.max('ID'.length, 'NAME'.length, 'COUNT'.length, ...rows.map((r) => r[i].length)),
   );
@@ -101,12 +110,12 @@ async function confirmDownload(
   yes: boolean,
   io: CliIo,
 ): Promise<boolean> {
-  const total = collections.reduce((s, c) => s + c.count, 0);
+  const total = collections.reduce((s, c) => s + (c.count ?? 0), 0);
   process.stderr.write(
     `${collections.length} collection${collections.length === 1 ? '' : 's'}, ${total} videos total\n`,
   );
   for (const c of collections) {
-    process.stderr.write(`  [${c.id}] ${c.name}: ${c.count} videos\n`);
+    process.stderr.write(`  [${c.id}] ${c.name}: ${c.count ?? '?'} videos\n`);
   }
   return yes || io.confirm('Proceed? (y/N): ');
 }
@@ -164,7 +173,7 @@ async function runDownload(
     );
   }
 
-  const collections = await services.listCollections(opts.cookiesFile);
+  const collections = await services.listCollections(opts.cookiesFile, opts.outputDir);
   let targets = collections;
   if (collectionId !== undefined) {
     const match = collections.filter((c) => c.id === collectionId);
@@ -295,7 +304,7 @@ export async function run(
 // Real scrape services (Task 16). Each call launches its own authenticated
 // browser session (T15 seam design) and closes it when done.
 export const defaultServices: CliServices = {
-  listCollections: (cookiesFile) => listCollectionsService(cookiesFile),
+  listCollections: (cookiesFile, outputDir) => listCollectionsService(cookiesFile, outputDir),
   downloadAll: (opts) => runDownloadAll(opts),
   downloadCollection: (collectionId, opts) => runDownloadCollection(collectionId, opts),
 };
