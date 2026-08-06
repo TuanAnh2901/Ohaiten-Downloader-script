@@ -13,3 +13,5 @@ spike/yt-dlp.exe
 fb-saved-dl.exe
 1b95ae69-*.txt
 spike/evidence/
+src-tauri/target/
+src-tauri/gen/
