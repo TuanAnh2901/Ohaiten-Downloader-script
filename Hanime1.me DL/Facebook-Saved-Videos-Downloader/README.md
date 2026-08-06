@@ -33,8 +33,8 @@ report of everything it did.
 - **A Netscape-format cookie file** exported from a logged-in browser session.
   Export with a browser extension (for example "Get cookies.txt LOCALLY") from
   `facebook.com`. The default filename is `Facebook-cookies.txt`.
-- **A real desktop session.** The tool opens a headed Chromium window on
-  purpose. See [Notes](#notes).
+- **A hidden background browser.** The tool launches a headless Chromium
+  process (no window, no taskbar icon); the session comes from your cookies.
 
 ---
 
@@ -131,10 +131,9 @@ downloads/
 
 ## Notes
 
-- **Headed browser required.** The tool launches Chromium headed
-  (`headless: false`) on purpose; a browser window pops up and closes per
-  command. Headless mode is not supported: Facebook flags it, and this project
-  treats the visible window as a guardrail.
+- **Hidden background browser.** The tool launches Chromium headless
+  (`headless: true`) — no window, no taskbar icon. The session comes entirely
+  from the injected cookies; no login form is ever shown.
 - **No save timestamp exists.** Facebook exposes no "saved at" field on saved
   items (verified against the live GraphQL response). Filenames are therefore
   title-only: `{title}.mp4`. There is no reliable way to order or rename files
