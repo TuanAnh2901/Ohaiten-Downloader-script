@@ -145,7 +145,7 @@ describe('listCollections', () => {
     expect(requests[0].__comet_req).toBe('1');
     expect(requests[0].variables).toMatchObject({
       contributorRoles: [],
-      count: 10,
+      count: 25,
       cursor: null,
       scale: 1,
     });

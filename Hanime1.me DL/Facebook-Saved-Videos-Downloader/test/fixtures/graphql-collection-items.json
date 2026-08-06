@@ -1,0 +1,45 @@
+{
+  "data": {
+    "content_collection": {
+      "id": "165363141591607",
+      "__typename": "ContentCollection",
+      "collection_items": {
+        "edges": [
+          {
+            "cursor": "ci1",
+            "node": {
+              "id": "1629146308546609",
+              "__isContentCollectionItem": "Save",
+              "savable": {
+                "__typename": "Video",
+                "id": "1533958624489961",
+                "savable_title": { "text": "3 tay to đi tù sẽ như thế nào full vyron" },
+                "savable_permalink": "https://www.facebook.com/watch/?ref=saved&v=1533958624489961",
+                "playable_duration": 412,
+                "savable_default_category": "VIDEO"
+              }
+            }
+          },
+          {
+            "cursor": "ci2",
+            "node": {
+              "id": "1629999999999999",
+              "__isContentCollectionItem": "Save",
+              "savable": {
+                "__typename": "Video",
+                "id": "1666666666666666",
+                "savable_title": { "text": "Anime exclusive video" },
+                "savable_permalink": "https://www.facebook.com/watch/?ref=saved&v=1666666666666666",
+                "savable_default_category": "VIDEO"
+              }
+            }
+          }
+        ],
+        "page_info": {
+          "end_cursor": null,
+          "has_next_page": false
+        }
+      }
+    }
+  }
+}

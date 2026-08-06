@@ -5,8 +5,11 @@ import { chromium, type Browser, type Page, type Route } from 'playwright';
 import {
   ALL_SAVES_DOC_ID,
   ALL_SAVES_FRIENDLY_NAME,
+  COLLECTION_ITEMS_DOC_ID,
+  COLLECTION_ITEMS_FRIENDLY_NAME,
   collectRelayEdges,
   paginateAllSaves,
+  paginateCollectionItems,
   queryGraphQL,
 } from '../src/graphql.js';
 import { PAGINATION_LOOP, FETCH_GRAPHQL, FbSavedCliError } from '../src/errors.js';
@@ -17,6 +20,10 @@ const P1 = readFileSync(
 );
 const P2 = readFileSync(
   fileURLToPath(new URL('./fixtures/graphql-items-page2.json', import.meta.url)),
+  'utf-8',
+);
+const CI = readFileSync(
+  fileURLToPath(new URL('./fixtures/graphql-collection-items.json', import.meta.url)),
   'utf-8',
 );
 
@@ -124,7 +131,7 @@ describe('paginateAllSaves', () => {
 
     const data = await queryGraphQL(page, {
       docId: ALL_SAVES_DOC_ID,
-      variables: { content_filter: [], count: 10, cursor: null, scale: 1, use_case: 'SAVE_DEFAULT' },
+      variables: { content_filter: [], count: 25, cursor: null, scale: 1, use_case: 'SAVE_DEFAULT' },
       friendlyName: ALL_SAVES_FRIENDLY_NAME,
     });
 
@@ -141,7 +148,7 @@ describe('paginateAllSaves', () => {
 
     const err = await queryGraphQL(page, {
       docId: ALL_SAVES_DOC_ID,
-      variables: { content_filter: [], count: 10, cursor: null, scale: 1, use_case: 'SAVE_DEFAULT' },
+      variables: { content_filter: [], count: 25, cursor: null, scale: 1, use_case: 'SAVE_DEFAULT' },
       friendlyName: ALL_SAVES_FRIENDLY_NAME,
     }).catch((e: unknown) => e);
 
@@ -172,6 +179,94 @@ describe('paginateAllSaves', () => {
 
     expect(calls).toBe(1);
     expect(all).toHaveLength(5);
+  }, 30000);
+});
+
+describe('paginateCollectionItems', () => {
+  it('queries the collection doc with collectionID and reads the root-level path', async () => {
+    const requests: Array<{ doc_id: string; friendly: string; collectionID: string }> = [];
+    await mockGraphQL(async (route) => {
+      const params = new URLSearchParams(route.request().postData() ?? '');
+      const vars = JSON.parse(params.get('variables') ?? '{}') as { collectionID: string };
+      requests.push({
+        doc_id: params.get('doc_id') ?? '',
+        friendly: params.get('fb_api_req_friendly_name') ?? '',
+        collectionID: vars.collectionID,
+      });
+      await route.fulfill({ status: 200, contentType: 'application/json', body: CI });
+    });
+
+    const nodes = await paginateCollectionItems(page, '165363141591607', { delayMs: 0 });
+
+    expect(requests).toEqual([
+      {
+        doc_id: COLLECTION_ITEMS_DOC_ID,
+        friendly: COLLECTION_ITEMS_FRIENDLY_NAME,
+        collectionID: '165363141591607',
+      },
+    ]);
+    // Root-level data.content_collection.collection_items edges, NOT viewer.
+    expect(nodes).toHaveLength(2);
+    expect((nodes[0] as { id: string }).id).toBe('1629146308546609');
+  }, 30000);
+
+  it('paginates through all pages when the server honors the cursor (verified live)', async () => {
+    // Mirror of the live scroll capture: each page returns distinct edges +
+    // a distinct end_cursor; the next page sends that cursor and gets the
+    // following 10 videos until has_next_page=false.
+    const pages = [
+      { end: 'cursor-1', hasNext: true, first: '1629146308546609' },
+      { end: 'cursor-2', hasNext: true, first: '1700000000000000' },
+      { end: null, hasNext: false, first: '1800000000000000' },
+    ];
+    let call = 0;
+    const sentCursors: Array<string | null> = [];
+    await mockGraphQL(async (route) => {
+      const params = new URLSearchParams(route.request().postData() ?? '');
+      const vars = JSON.parse(params.get('variables') ?? '{}') as { cursor: string | null };
+      sentCursors.push(vars.cursor);
+      const page = pages[Math.min(call, pages.length - 1)];
+      call++;
+      const ci = JSON.parse(CI) as {
+        data: { content_collection: { collection_items: { edges: Array<{ node: { id: string } }>; page_info: { end_cursor: string | null; has_next_page: boolean } } } };
+      };
+      ci.data.content_collection.collection_items.edges[0].node.id = page.first;
+      ci.data.content_collection.collection_items.page_info = { end_cursor: page.end, has_next_page: page.hasNext };
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ci) });
+    });
+
+    const nodes = await paginateCollectionItems(page, '165363141591607', { delayMs: 0 });
+
+    // Cursor chain: null -> cursor-1 -> cursor-2 (3 pages, distinct content).
+    expect(sentCursors).toEqual([null, 'cursor-1', 'cursor-2']);
+    expect(nodes).toHaveLength(6); // 2 edges x 3 pages
+  }, 30000);
+
+  it('throws PAGINATION_LOOP for collection-items when end_cursor repeats', async () => {
+    // Same fixture every time (end_cursor c5-ish + has_next_page true): a
+    // repeating cursor is a real bug now that pagination works — must throw.
+    const repeating = JSON.parse(CI) as {
+      data: { content_collection: { collection_items: { page_info: { end_cursor: string; has_next_page: boolean } } } };
+    };
+    repeating.data.content_collection.collection_items.page_info = {
+      end_cursor: 'same-cursor',
+      has_next_page: true,
+    };
+    await mockGraphQL(async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(repeating) });
+    });
+
+    const err = await paginateCollectionItems(page, '165363141591607', { delayMs: 0 }).catch((e: unknown) => e);
+    expect((err as { code: string }).code).toBe(PAGINATION_LOOP);
+  }, 30000);
+
+  it('throws PAGINATION_LOOP for all-saves on repeated end_cursor (unchanged)', async () => {
+    await mockGraphQL(async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: P1 });
+    });
+
+    const err = await paginateAllSaves(page, { delayMs: 0 }).catch((e: unknown) => e);
+    expect((err as { code: string }).code).toBe(PAGINATION_LOOP);
   }, 30000);
 });
 

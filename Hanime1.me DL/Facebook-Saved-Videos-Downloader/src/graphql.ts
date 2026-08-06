@@ -12,6 +12,17 @@
  *
  * Response: data.viewer.saver_info.all_saves.edges[].node with page_info
  * {end_cursor, has_next_page}.
+ *
+ * Per-collection items: doc 26605228462486746
+ * (CometSaveCollectionAllItemsPaginationQuery) — verified live: the /saved UI
+ * issues the ROOT doc (27440094105689641) for page 1, then THIS doc for every
+ * scroll page (captured via Playwright scroll-through). Cursor pagination
+ * WORKS when the exact UI variables are sent: count:10 + feedLocation +
+ * feedbackSource + focusCommentID + the __relay_internal__pv__* provider vars.
+ * Omitting feedLocation/feedbackSource makes the server ignore the cursor and
+ * return page 1 forever. Response is root-level
+ * data.content_collection.collection_items.edges[].node with page_info under
+ * the same collection_items object (NOT under viewer).
  */
 
 import type { Page } from 'playwright';
@@ -19,6 +30,8 @@ import { FbSavedCliError, FETCH_GRAPHQL, PAGINATION_LOOP } from './errors.js';
 
 export const ALL_SAVES_DOC_ID = '27174039202273427';
 export const ALL_SAVES_FRIENDLY_NAME = 'CometSaveDashboardAllItemsPaginationQuery';
+export const COLLECTION_ITEMS_DOC_ID = '26605228462486746';
+export const COLLECTION_ITEMS_FRIENDLY_NAME = 'CometSaveCollectionAllItemsPaginationQuery';
 const GRAPHQL_ENDPOINT = 'https://www.facebook.com/api/graphql/';
 
 export interface GraphQLQueryOpts {
@@ -234,48 +247,52 @@ function findPageInfo(data: unknown): PageInfo {
   return candidate ?? {};
 }
 
+/**
+ * Edge/page_info extraction for the per-collection doc (27440094105689641).
+ * Its response is ROOT-level data.content_collection.collection_items — NOT
+ * under viewer — so the viewer-scoped collectRelayEdges/findPageInfo would
+ * miss it entirely.
+ */
+function collectionItemsConn(data: unknown): {
+  edges?: Array<{ cursor?: string; node?: unknown }>;
+  page_info?: PageInfo;
+} | null {
+  return (data as {
+    content_collection?: { collection_items?: { edges?: Array<{ cursor?: string; node?: unknown }>; page_info?: PageInfo } };
+  })?.content_collection?.collection_items ?? null;
+}
+
 export interface PaginateOpts {
   /** Hard page cap (default 200). */
   maxPages?: number;
-  /** Pacing delay between pages (default 2000ms). */
+  /** Pacing delay between pages (default 750ms). */
   delayMs?: number;
   /** Called with each page's nodes as they arrive. */
   onPage?: (items: unknown[]) => void;
 }
 
 /**
- * Cursor-paginate ALL saved items (doc 27174039202273427 — covers 100% of
- * saves incl. uncategorized, per spike T3). Sequential + delay; never
- * parallel. Loop protection: a repeated end_cursor with has_next_page throws
- * PAGINATION_LOOP.
+ * Shared relay cursor-paginator. Sequential + delay; never parallel. Loop
+ * protection: a repeated end_cursor with has_next_page throws PAGINATION_LOOP.
  */
-export async function paginateAllSaves(
+async function paginateRelay(
   page: Page,
-  opts: PaginateOpts = {},
+  opts: PaginateOpts,
+  query: (
+    cursor: string | null,
+  ) => Promise<{ nodes: unknown[]; pageInfo: PageInfo }>,
 ): Promise<unknown[]> {
   const maxPages = opts.maxPages ?? 200;
-  const delayMs = opts.delayMs ?? 2000;
+  const delayMs = opts.delayMs ?? 750;
   const seenCursors = new Set<string>();
   const all: unknown[] = [];
   let cursor: string | null = null;
 
   for (let pageNum = 0; pageNum < maxPages; pageNum++) {
-    const data = await queryGraphQL(page, {
-      docId: ALL_SAVES_DOC_ID,
-      variables: {
-        content_filter: [],
-        count: 10,
-        cursor,
-        scale: 1,
-        use_case: 'SAVE_DEFAULT',
-      },
-      friendlyName: ALL_SAVES_FRIENDLY_NAME,
-    });
-    const items = collectRelayEdges(data).map((e) => e.node);
-    all.push(...items);
-    opts.onPage?.(items);
+    const { nodes, pageInfo } = await query(cursor);
+    all.push(...nodes);
+    opts.onPage?.(nodes);
 
-    const pageInfo = findPageInfo(data);
     if (!pageInfo.has_next_page) break;
     const nextCursor = pageInfo.end_cursor;
     if (!nextCursor) break;
@@ -294,4 +311,81 @@ export async function paginateAllSaves(
   // ponytail: cap exceeded → return collected pages, don't throw (partial
   // results beat none); caller can pass a higher maxPages.
   return all;
+}
+
+/**
+ * Cursor-paginate ALL saved items (doc 27174039202273427 — covers 100% of
+ * saves incl. uncategorized, per spike T3).
+ */
+export async function paginateAllSaves(
+  page: Page,
+  opts: PaginateOpts = {},
+): Promise<unknown[]> {
+  return paginateRelay(page, opts, async (cursor) => {
+    const data = await queryGraphQL(page, {
+      docId: ALL_SAVES_DOC_ID,
+      variables: {
+        content_filter: [],
+        count: 25,
+        cursor,
+        scale: 1,
+        use_case: 'SAVE_DEFAULT',
+      },
+      friendlyName: ALL_SAVES_FRIENDLY_NAME,
+    });
+    return {
+      nodes: collectRelayEdges(data).map((e) => e.node),
+      pageInfo: findPageInfo(data),
+    };
+  });
+}
+
+/**
+ * Cursor-paginate ONE collection's items (doc 27440094105689641,
+ * CometSaveCollectionAllItemsPaginationQuery — the live UI's scroll doc) —
+ * the fast path for download-collection. Cursor pagination works ONLY with
+ * the exact UI variables (feedLocation/feedbackSource required — without them
+ * the server ignores the cursor and repeats page 1). Root response:
+ * data.content_collection.collection_items.edges/page_info.
+ */
+export async function paginateCollectionItems(
+  page: Page,
+  collectionId: string,
+  opts: PaginateOpts = {},
+): Promise<unknown[]> {
+  return paginateRelay(page, opts, async (cursor) => {
+    const data = await queryGraphQL(page, {
+      docId: COLLECTION_ITEMS_DOC_ID,
+      variables: {
+        collectionID: collectionId,
+        // UI uses count:10 per scroll page; larger counts still return 10.
+        count: 10,
+        cursor,
+        scale: 1,
+        // Exact variables the live /saved UI sends when scrolling a
+        // collection (captured via Playwright): feedLocation/feedbackSource
+        // make the server honor the cursor; the __relay_internal__pv__*
+        // provider vars are REQUIRED (missing -> missing_required_variable_value).
+        // Values are stable flags/enums.
+        feedbackSource: 58,
+        feedLocation: 'SAVED_DASHBOARD',
+        focusCommentID: null,
+        useDefaultActor: false,
+        __relay_internal__pv__CometUFICommentAutoTranslationTyperelayprovider: 'ORIGINAL',
+        __relay_internal__pv__CometUFICommentAvatarStickerAnimatedImagerelayprovider: false,
+        __relay_internal__pv__CometUFICommentActionLinksRewriteEnabledrelayprovider: true,
+        __relay_internal__pv__IsWorkUserrelayprovider: false,
+        __relay_internal__pv__CometUFIReactionsEnableShortNamerelayprovider: false,
+        __relay_internal__pv__CometUFISingleLineUFIrelayprovider: true,
+        __relay_internal__pv__CometUFIShareActionMigrationrelayprovider: true,
+        __relay_internal__pv__GHLShouldChangeSponsoredDataFieldNamerelayprovider: true,
+      },
+      friendlyName: COLLECTION_ITEMS_FRIENDLY_NAME,
+    });
+    const conn = collectionItemsConn(data);
+    const nodes = (conn?.edges ?? [])
+      .filter((e) => e && e.node && typeof e.node === 'object')
+      .map((e) => e.node);
+    return { nodes, pageInfo: conn?.page_info ?? {} };
+  });
 }

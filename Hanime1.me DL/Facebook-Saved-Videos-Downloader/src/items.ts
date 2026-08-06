@@ -10,7 +10,7 @@
  */
 
 import type { Page } from 'playwright';
-import { paginateAllSaves, type PaginateOpts } from './graphql.js';
+import { paginateAllSaves, paginateCollectionItems, type PaginateOpts } from './graphql.js';
 
 export interface SavedItem {
   /** Numeric video id (savable.id, digits only). */
@@ -101,6 +101,30 @@ export async function listAllSaves(
   for (const node of nodes) {
     const item = parseItemNode(node);
     if (item) items.push(item);
+  }
+  return items;
+}
+
+/**
+ * Enumerate the items of ONE collection (doc 27440094105689641) — the fast
+ * path for download-collection, which must NOT walk the whole all-saves
+ * stream. The collection doc does not select `containing_lists`, so every
+ * parsed item gets collectionIds forced to the queried collection (they are
+ * members by definition).
+ */
+export async function listCollectionItems(
+  page: Page,
+  collectionId: string,
+  opts: PaginateOpts = {},
+): Promise<SavedItem[]> {
+  const nodes = await paginateCollectionItems(page, collectionId, opts);
+  const items: SavedItem[] = [];
+  for (const node of nodes) {
+    const item = parseItemNode(node);
+    if (item) {
+      item.collectionIds = [collectionId];
+      items.push(item);
+    }
   }
   return items;
 }

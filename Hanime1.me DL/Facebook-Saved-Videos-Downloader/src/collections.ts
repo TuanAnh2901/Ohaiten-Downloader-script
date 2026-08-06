@@ -39,7 +39,8 @@ export interface ListCollectionsOpts {
   items?: ItemWithCollections[];
   /** Hard page cap for LeftRail pagination (default 50). */
   maxPages?: number;
-  /** Pacing delay between pages (default 2000ms). */
+  /** Pacing delay between pages (default 500ms — LeftRail is the fast refresh
+   *  path; the all-saves walk keeps its own slower 2000ms pacing). */
   delayMs?: number;
 }
 
@@ -89,7 +90,7 @@ export async function listCollections(
   opts: ListCollectionsOpts = {},
 ): Promise<CollectionSummary[]> {
   const maxPages = opts.maxPages ?? 50;
-  const delayMs = opts.delayMs ?? 2000;
+  const delayMs = opts.delayMs ?? 500;
   const byId = new Map<string, CollectionSummary>();
   const seenCursors = new Set<string>();
   let cursor: string | null = null;
@@ -97,7 +98,7 @@ export async function listCollections(
   for (let n = 0; n < maxPages; n++) {
     const data = await queryGraphQL(page, {
       docId: LEFT_RAIL_DOC_ID,
-      variables: { contributorRoles: [], count: 10, cursor, scale: 1 },
+      variables: { contributorRoles: [], count: 25, cursor, scale: 1 },
       friendlyName: LEFT_RAIL_FRIENDLY_NAME,
     });
     for (const edge of collectRelayEdges(data)) {

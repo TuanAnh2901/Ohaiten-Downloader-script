@@ -6,6 +6,7 @@ import {
   countByCollection,
   extractVideoId,
   listAllSaves,
+  listCollectionItems,
   parseItemNode,
   type SavedItem,
 } from '../src/items.js';
@@ -16,6 +17,10 @@ const P1 = readFileSync(
 );
 const P2 = readFileSync(
   fileURLToPath(new URL('./fixtures/graphql-items-page2.json', import.meta.url)),
+  'utf-8',
+);
+const CI = readFileSync(
+  fileURLToPath(new URL('./fixtures/graphql-collection-items.json', import.meta.url)),
   'utf-8',
 );
 
@@ -200,6 +205,41 @@ describe('listAllSaves', () => {
     expect(items[0].collectionIds).toEqual(['165363141591607']);
     expect(items[2].collectionIds).toEqual(['426792272115358']);
     expect(items[1].collectionIds).toEqual([]); // uncategorized surfaces
+  }, 30000);
+});
+
+describe('listCollectionItems', () => {
+  let browser: Browser;
+  let page: Page;
+
+  beforeAll(async () => {
+    browser = await chromium.launch();
+    page = await browser.newPage();
+    await page.route('**/*', (route) =>
+      route.fulfill({ status: 200, contentType: 'text/html', body: '<html><body></body></html>' }),
+    );
+    await page.goto('https://www.facebook.com/');
+  }, 30000);
+
+  afterEach(async () => {
+    await page.unroute('**/api/graphql/**');
+  });
+
+  afterAll(async () => {
+    await browser.close();
+  });
+
+  it('reads the collection doc (root path) and forces collectionIds to the queried collection', async () => {
+    await page.route('**/api/graphql/**', (route: Route) => {
+      void route.fulfill({ status: 200, contentType: 'application/json', body: CI });
+    });
+
+    const items = await listCollectionItems(page, '165363141591607', { delayMs: 0 });
+
+    expect(items).toHaveLength(2);
+    expect(items[0].videoId).toBe('1533958624489961');
+    expect(items[0].collectionIds).toEqual(['165363141591607']); // forced — doc has no containing_lists
+    expect(items.every((i) => i.collectionIds.length === 1)).toBe(true);
   }, 30000);
 });
 
