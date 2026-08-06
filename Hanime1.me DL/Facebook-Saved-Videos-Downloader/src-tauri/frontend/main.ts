@@ -20,7 +20,7 @@ app.innerHTML = `
         <div class="tab-content active" data-tab-content="collections" aria-labelledby="collections-title">
           <div class="section-heading"><div><p class="eyebrow">Your library</p><h2 id="collections-title">Saved collections</h2></div><button class="button button-secondary" id="refresh-collections" type="button">Refresh library</button></div>
           <p id="collections-status" class="muted" role="status" aria-live="polite">Loading collections...</p><div class="collection-grid" data-collections aria-label="Saved collections"></div>
-          <section class="action-panel" aria-labelledby="download-title"><div><p class="eyebrow">Download center</p><h2 id="download-title">Archive your saved videos</h2><p class="muted">Select a collection above or scan all saved items.</p></div><div class="action-row"><button class="button button-primary" id="download-all" type="button">Download all</button><button class="button button-quiet" id="dry-run" type="button">Preview plan</button></div></section>
+          <section class="action-panel" aria-labelledby="download-title"><div><p class="eyebrow">Download center</p><h2 id="download-title">Archive your saved videos</h2><p class="muted">Select a collection above or scan all saved items.</p></div><div class="action-row"><button class="button button-primary" id="download-all" type="button">Download all</button></div></section>
           <section class="progress-panel" aria-labelledby="progress-title"><div class="section-heading compact"><div><p class="eyebrow">Live activity</p><h2 id="progress-title">Download progress</h2></div></div><p id="operation-status" class="empty-state" role="status" aria-live="polite">No operation running.</p><progress id="operation-progress" max="1" value="0" aria-label="Download progress"></progress></section>
         </div>
         <div class="tab-content" data-tab-content="history" aria-labelledby="history-title">
@@ -84,21 +84,27 @@ const renderReports = (reports: ReportRecord[]) => {
   });
 };
 
+const cardProgress = new Map<string, { bar: HTMLProgressElement; counter: HTMLSpanElement }>();
+
 const renderCollections = (collections: Collection[]) => {
   if (!collectionGrid) return;
   collectionGrid.replaceChildren();
+  cardProgress.clear();
    if (!collections.length) { const empty = document.createElement('p'); empty.className = 'empty-state'; empty.textContent = 'No collections found. Check settings and refresh.'; collectionGrid.append(empty); return; }
   collections.forEach((collection, index) => {
     const card = document.createElement('article'); card.className = 'collection-card'; card.dataset.collectionId = collection.id;
      const indexLabel = document.createElement('p'); indexLabel.className = 'card-index'; indexLabel.textContent = `Collection ${String(index + 1).padStart(2, '0')}`;
     const title = document.createElement('h3'); title.textContent = collection.name;
-     const description = document.createElement('p'); description.textContent = collection.count === 0 ? 'This collection is empty.' : 'Ready to archive your saved videos.';
+     const description = document.createElement('p'); description.textContent = collection.count === undefined ? 'Count unknown until a download runs.' : collection.count === 0 ? 'This collection is empty.' : 'Ready to archive your saved videos.';
      const footer = document.createElement('div'); footer.className = 'card-footer'; footer.innerHTML = '<span>Items saved</span>';
-    const count = document.createElement('strong'); count.textContent = `${collection.count} ${collection.count === 1 ? 'item' : 'items'}`; footer.append(count);
+    const count = document.createElement('strong'); count.textContent = collection.count === undefined ? '—' : `${collection.count} ${collection.count === 1 ? 'item' : 'items'}`; footer.append(count);
     const actions = document.createElement('div'); actions.className = 'card-actions';
      const download = document.createElement('button'); download.className = 'button button-primary'; download.type = 'button'; download.dataset.downloadCollection = collection.id; download.textContent = 'Download'; download.setAttribute('aria-label', `Download ${collection.name}`);
-     const preview = document.createElement('button'); preview.className = 'button button-quiet'; preview.type = 'button'; preview.dataset.previewCollection = collection.id; preview.textContent = 'Preview'; preview.setAttribute('aria-label', `Preview ${collection.name}`);
-    actions.append(download, preview); card.append(indexLabel, title, description, footer, actions); collectionGrid.append(card);
+    actions.append(download);
+    const bar = document.createElement('progress'); bar.className = 'card-progress'; bar.max = 1; bar.value = 0; bar.hidden = true; bar.setAttribute('aria-label', `Download progress for ${collection.name}`);
+    const counter = document.createElement('span'); counter.className = 'card-counter'; counter.hidden = true;
+    cardProgress.set(collection.id, { bar, counter });
+    card.append(indexLabel, title, description, footer, actions, bar, counter); collectionGrid.append(card);
   });
 };
 
@@ -107,6 +113,8 @@ const view: CollectionsView = {
   setBusy: (busy) => document.querySelectorAll<HTMLButtonElement>('button').forEach((button) => { button.disabled = busy; button.setAttribute('aria-busy', String(busy)); }),
   setStatus,
    setProgress: (event) => { const total = Math.max(event.total, 1); if (progress) { progress.max = total; progress.value = event.completed; } if (operationStatus) operationStatus.textContent = `Downloading ${event.completed} of ${event.total} · video ${event.videoId}`; },
+   setPhase: (message) => { if (operationStatus) operationStatus.textContent = message; },
+   setCardProgress: (collectionId, completed, total) => { const el = cardProgress.get(collectionId); if (!el) return; el.bar.hidden = false; el.bar.max = Math.max(total, 1); el.bar.value = completed; el.counter.hidden = false; el.counter.textContent = `${completed}/${total}`; },
    setTerminal: (event) => { const hasFailures = (event.type === 'completed' || event.type === 'partial') && event.failureCount > 0; const label = hasFailures ? 'partial' : event.type; const summary = event.type === 'completed' || event.type === 'partial' ? `${label}: ${event.successCount} succeeded, ${event.failureCount} failed.` : `${event.type}: ${'message' in event ? event.message : 'unknown engine state'}`; if (operationStatus) operationStatus.textContent = summary; setStatus(label === 'completed' ? 'Engine complete' : `Engine ${label}`, label === 'completed' ? 'ok' : 'error'); },
   renderReports,
 };
@@ -124,8 +132,7 @@ document.querySelector<HTMLButtonElement>('#install-yt-dlp')?.addEventListener('
 
 document.querySelector<HTMLButtonElement>('#refresh-collections')?.addEventListener('click', () => void controller.refresh());
 document.querySelector<HTMLButtonElement>('#download-all')?.addEventListener('click', () => void controller.downloadAll());
-document.querySelector<HTMLButtonElement>('#dry-run')?.addEventListener('click', () => void controller.downloadAll(true));
-collectionGrid?.addEventListener('click', (event) => { const target = event.target as HTMLElement; const downloadId = target.closest<HTMLButtonElement>('[data-download-collection]')?.dataset.downloadCollection; const previewId = target.closest<HTMLButtonElement>('[data-preview-collection]')?.dataset.previewCollection; if (downloadId) void controller.downloadCollection(downloadId); else if (previewId) void controller.downloadCollection(previewId, true); });
+collectionGrid?.addEventListener('click', (event) => { const target = event.target as HTMLElement; const downloadId = target.closest<HTMLButtonElement>('[data-download-collection]')?.dataset.downloadCollection; if (downloadId) void controller.downloadCollection(downloadId); });
 
 const settingsForm = document.querySelector<HTMLFormElement>('#settings-form'); const settingsErrors = document.querySelector<HTMLElement>('#settings-errors');
 void (async () => { try { writeSettings(tauri ? await tauri.invoke<DownloaderSettings>('load_settings') : loadSettings(settingsStore)); } catch { writeSettings(loadSettings(settingsStore)); } await controller.refresh(); })();

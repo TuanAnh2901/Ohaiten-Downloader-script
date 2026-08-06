@@ -1,10 +1,11 @@
 import type { DownloaderSettings } from './settings';
 import { createReportRecord, loadReports, saveReport, type ReportRecord, type ReportStore } from './report';
 
-export interface Collection { id: string; name: string; count: number }
+export interface Collection { id: string; name: string; count?: number }
 export type EngineEvent =
   | { type: 'collections'; operationId: string; collections: Collection[] }
   | { type: 'progress'; operationId: string; collectionId: string; videoId: string; completed: number; total: number }
+  | { type: 'status'; operationId: string; message: string }
   | { type: 'completed' | 'partial'; operationId: string; successCount: number; failureCount: number; exitCode: 0 | 1; failures?: { videoId?: string; reason: string }[] }
   | { type: 'failed' | 'cancelled' | 'timeout' | 'error'; operationId: string; message: string; exitCode: 3 | 130 | 124 };
 
@@ -12,7 +13,6 @@ export interface EngineRequest {
   command: 'download-all' | 'download-collection';
   collectionId?: string;
   settings: DownloaderSettings;
-  dryRun: boolean;
 }
 
 export interface EngineClient {
@@ -43,6 +43,10 @@ export interface CollectionsView {
   setProgress(event: Extract<EngineEvent, { type: 'progress' }>): void;
   setTerminal(event: Extract<EngineEvent, { type: 'completed' | 'partial' | 'failed' | 'cancelled' | 'timeout' | 'error' }>): void;
   renderReports?(reports: ReportRecord[]): void;
+  /** Live phase text (browser launch, page scans, download setup). */
+  setPhase?(message: string): void;
+  /** Per-collection card progress (bar + counter on the card element). */
+  setCardProgress?(collectionId: string, completed: number, total: number): void;
 }
 
 export function createCollectionsController(client: EngineClient, view: CollectionsView, settings: () => DownloaderSettings, reportStore?: ReportStore) {
@@ -56,10 +60,12 @@ export function createCollectionsController(client: EngineClient, view: Collecti
   let progressFailed = 0;
   const consume = (event: EngineEvent) => {
     if (event.type === 'collections') { collections = event.collections; view.renderCollections(collections); return; }
+    if (event.type === 'status') { view.setPhase?.(event.message); return; }
     if (event.type === 'progress') {
       progressCompleted += event.completed;
       progressFailed += Math.max(0, event.total - event.completed);
       view.setProgress(event);
+      view.setCardProgress?.(event.collectionId, event.completed, event.total);
       return;
     }
     activeTerminal = event;
@@ -104,7 +110,7 @@ export function createCollectionsController(client: EngineClient, view: Collecti
     get collections() { return collections; },
     get isBusy() { return busy; },
     refresh: () => run(() => client.listCollections(settings(), consume), 'Refreshing collections'),
-    downloadAll: (dryRun = false) => run(() => client.start({ command: 'download-all', settings: settings(), dryRun }, consume), dryRun ? 'Previewing all saved videos' : 'Downloading all saved videos', true),
-    downloadCollection: (collectionId: string, dryRun = false) => run(() => client.start({ command: 'download-collection', collectionId, settings: settings(), dryRun }, consume), dryRun ? 'Previewing collection' : 'Downloading collection', true, 'download-collection', collectionId),
+    downloadAll: () => run(() => client.start({ command: 'download-all', settings: settings() }, consume), 'Downloading all saved videos', true),
+    downloadCollection: (collectionId: string) => run(() => client.start({ command: 'download-collection', collectionId, settings: settings() }, consume), 'Downloading collection', true, 'download-collection', collectionId),
   };
 }

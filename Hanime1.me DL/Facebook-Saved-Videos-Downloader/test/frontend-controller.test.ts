@@ -21,7 +21,7 @@ describe('collections controller', () => {
     const events: string[] = [];
     const client = createTauriEngineClient(bridge);
     await client.listCollections(settings, (event) => events.push(event.type));
-    await client.start({ command: 'download-all', settings, dryRun: false }, (event) => events.push(event.type));
+    await client.start({ command: 'download-all', settings }, (event) => events.push(event.type));
     expect(emitted).toEqual(['list_collections', 'run_engine']);
     expect(events).toEqual(['progress', 'progress']);
   });
@@ -33,10 +33,10 @@ describe('collections controller', () => {
     expect(controller.collections[1]).toEqual({ id: 'zero', name: 'Sản phẩm', count: 0 });
   });
 
-  it('passes exact collection id and preserves settings/dry-run', async () => {
+  it('passes exact collection id and preserves settings', async () => {
     const start = vi.fn(async (request: Parameters<EngineClient['start']>[0], emit: Parameters<EngineClient['start']>[1]) => emit({ type: 'completed', operationId: 'x', successCount: 1, failureCount: 0, exitCode: 0 }));
-    const { controller } = harness({ listCollections: async () => undefined, start }); await controller.downloadCollection('302722351189018', true);
-    expect(start).toHaveBeenCalledWith({ command: 'download-collection', collectionId: '302722351189018', settings, dryRun: true }, expect.any(Function));
+    const { controller } = harness({ listCollections: async () => undefined, start }); await controller.downloadCollection('302722351189018');
+    expect(start).toHaveBeenCalledWith({ command: 'download-collection', collectionId: '302722351189018', settings }, expect.any(Function));
   });
 
   it('passes download-all and blocks duplicate clicks while busy', async () => {
@@ -49,6 +49,24 @@ describe('collections controller', () => {
     const refresh = vi.fn(async (_s: DownloaderSettings, emit: Parameters<EngineClient['listCollections']>[1]) => emit({ type: 'collections', operationId: 'refresh', collections }));
     const { controller, view } = harness({ listCollections: refresh, start: async (_r, emit) => { emit({ type: 'progress', operationId: 'x', collectionId: '302722351189018', videoId: 'v', completed: 1, total: 2 }); emit({ type: 'completed', operationId: 'x', successCount: 2, failureCount: 0, exitCode: 0 }); } });
     await controller.downloadAll(); expect(view.setProgress).toHaveBeenCalled(); expect(view.setTerminal).toHaveBeenCalled();
+  });
+
+  it('forwards status phases and per-card progress to the view', async () => {
+    const setPhase = vi.fn();
+    const setCardProgress = vi.fn();
+    const view: CollectionsView = { renderCollections: vi.fn(), setBusy: vi.fn(), setStatus: vi.fn(), setProgress: vi.fn(), setTerminal: vi.fn(), setPhase, setCardProgress };
+    const client: EngineClient = {
+      listCollections: async () => undefined,
+      start: async (_r, emit) => {
+        emit({ type: 'status', operationId: 'x', message: 'Scanning saved items — page 1 (25 found so far)...' });
+        emit({ type: 'progress', operationId: 'x', collectionId: '302722351189018', videoId: 'v', completed: 1, total: 2 });
+        emit({ type: 'completed', operationId: 'x', successCount: 1, failureCount: 0, exitCode: 0 });
+      },
+    };
+    const controller = createCollectionsController(client, view, () => settings);
+    await controller.downloadAll();
+    expect(setPhase).toHaveBeenCalledWith('Scanning saved items — page 1 (25 found so far)...');
+    expect(setCardProgress).toHaveBeenCalledWith('302722351189018', 1, 2);
   });
 
   it('surfaces engine failures and empty collection lists', async () => {
