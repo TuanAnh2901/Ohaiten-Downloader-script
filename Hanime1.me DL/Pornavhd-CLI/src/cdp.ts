@@ -122,7 +122,10 @@ export class Page {
       'Runtime.evaluate',
       { expression: 'document.documentElement.outerHTML', returnByValue: true },
       this.sessionId,
-    ).catch(() => null)
+    ).catch((e) => {
+      if (process.env.PWDBG) console.error('[cdp] html() lỗi:', String(e).slice(0, 120))
+      return null
+    })
     return res?.result?.value || ''
   }
 
@@ -144,6 +147,14 @@ export class Page {
       .catch(() => null)
     if (!res || res.body == null) return null
     return decodeBody(res.body, !!res.base64Encoded)
+  }
+
+  /** Đọc body theo sessionId ghi nhận sự kiện (requestId là per-session trong CDP) */
+  body(resp: { requestId: string; sessionId: string }): Promise<Buffer | null> {
+    return this.browser.cdp
+      .send('Network.getResponseBody', { requestId: resp.requestId }, resp.sessionId as string)
+      .then((res: any) => (res && res.body != null ? decodeBody(res.body, !!res.base64Encoded) : null))
+      .catch(() => null)
   }
 
   async close() {

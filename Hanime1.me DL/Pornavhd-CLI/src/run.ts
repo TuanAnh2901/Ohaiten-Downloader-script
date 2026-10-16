@@ -51,7 +51,7 @@ async function downloadOne(
   } catch {}
   const page = await browser.newPage('about:blank')
   try {
-    const ok = await downloadVideo(page, v.url, dest, { res: flags.res, title: v.title, log: console.log })
+    const ok = await downloadVideo(page, v.url, dest, { res: flags.res, title: v.title, log: console.log, streams: flags.streams })
     console.log(`[${ok ? 'ok' : 'FAIL'}] ${fname}`)
     return ok && (await stat(dest).then((s) => s.size > 1024, () => false))
   } catch (e: any) {

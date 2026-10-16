@@ -8,6 +8,8 @@ export interface Flags {
   first?: number
   to?: number
   retries: number
+  /** số luồng song song tải segment mỗi video (mặc định 64) */
+  streams: number
   target: string
 }
 
@@ -27,6 +29,7 @@ export function parseArgs(argv: string[]): Flags {
     list: false,
     jobs: 1,
     retries: 2,
+    streams: 64,
     target: '',
   }
   const rest: string[] = []
@@ -46,6 +49,7 @@ export function parseArgs(argv: string[]): Flags {
     else if (a === '--from') flags.first = num(a)
     else if (a === '--to') flags.to = num(a)
     else if (a === '--retries') flags.retries = num(a)
+    else if (a === '--streams') flags.streams = num(a)
     else if (a === '--help' || a === '-h') printHelp()
     else if (!a.startsWith('--')) rest.push(a)
   }
@@ -120,6 +124,7 @@ flags:
   --from N       video bắt đầu (thứ tự listing)
   --to N         video kết thúc
   --retries N    retry mỗi video khi fail (default 2)
+  --streams N    số luồng song song tải segment mỗi video (default 64)
 
 yêu cầu: Edge/Chrome + ffmpeg trong PATH`)
 }

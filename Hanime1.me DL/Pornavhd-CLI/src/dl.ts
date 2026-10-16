@@ -1,12 +1,15 @@
-// src/dl.ts — flow tải 1 video: response listener -> play 16x -> gom fMP4 segment -> ffmpeg
-// Port pornavhd.py:97-345.
+// src/dl.ts — flow tải 1 video: browser chỉ để đọc window.links.hls2 (StreamHG/recordplay),
+// toàn bộ segment tải NATIVE bằng Node fetch pool (mặc định 64 luồng) → ffmpeg remux.
 import { execFileSync } from 'node:child_process'
 import { unlinkSync, writeFileSync } from 'node:fs'
-import type { Page, CdpResponse } from './cdp'
+import type { Page } from './cdp'
 import { vidUrlJoin } from './urljoin'
 
 const AD_STREAM_HOSTS = ['growcdnssedge', 'whitetrafsa', 'tiktokcdn']
 const PLAYER_FRAME_RE = /\/e\/|recordplay/
+// UA khớp Edge thật — cdn-centaurus từ chối UA lạ
+const DL_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36 Edg/155.0.0.0'
+const DL_HEADERS: Record<string, string> = { 'User-Agent': DL_UA, Referer: 'https://recordplay.biz/' }
 
 export function isAdHost(url: string): boolean {
   return AD_STREAM_HOSTS.some((h) => url.includes(h))
@@ -17,7 +20,7 @@ export function isPlaylist(url: string): boolean {
   return u.includes('.m3u8') && !isAdHost(u)
 }
 
-/**_resolve URI EXT-X-MAP & segments, urljoin với base m3u8 */
+/** resolve URI EXT-X-MAP & segments từ variant m3u8 (support fMP4 + TS) */
 export function parseVariant(text: string, baseUrl: string): { segs: string[]; init: string | null } {
   let init: string | null = null
   const segs: string[] = []
@@ -33,10 +36,68 @@ export function parseVariant(text: string, baseUrl: string): { segs: string[]; i
   return { segs, init }
 }
 
+export interface HlsVariant { url: string; w: number; h: number }
+
+/** master.m3u8 → danh sách variant kèm RESOLUTION (chỉ lấy line sau STREAM-INF là URL) */
+export function parseMaster(text: string, baseUrl: string): HlsVariant[] {
+  const lines = text.split(/\r?\n/).map((l) => l.trim())
+  const out: HlsVariant[] = []
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].startsWith('#EXT-X-STREAM-INF')) continue
+    const m = lines[i].match(/RESOLUTION=(\d+)x(\d+)/)
+    const raw = lines[i + 1]
+    if (m && raw && !raw.startsWith('#')) out.push({ url: vidUrlJoin(baseUrl, raw), w: Number(m[1]), h: Number(m[2]) })
+  }
+  return out
+}
+
+/** chọn variant theo --res: cao nhất ≤ res;若无 variant hợp → thấp nhất còn lại */
+export function chooseVariant(vs: HlsVariant[], res?: number): HlsVariant | null {
+  if (!vs.length) return null
+  const ok = vs.filter((v) => !res || v.h <= res)
+  if (!ok.length) return vs.reduce((a, b) => (b.h < a.h ? b : a))
+  return ok.reduce((a, b) => (b.h > a.h ? b : a))
+}
+
+function fetchText(url: string): Promise<string> {
+  return fetch(url, { headers: DL_HEADERS }).then(async (r) => {
+    if (!r.ok) throw new Error(`HTTP ${r.status} ${url.slice(0, 90)}`)
+    return r.text()
+  })
+}
+
+/** run pool: n worker kéo lần lượt chuỗi url, mỗi url retry 3 lần */
+async function pooledDownload(
+  urls: string[],
+  streams: number,
+  buf: Map<string, Buffer>,
+  onProgress?: () => void,
+): Promise<void> {
+  let i = 0
+  const next = async (): Promise<void> => {
+    while (i < urls.length) {
+      const u = urls[i++]
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const r = await fetch(u, { headers: DL_HEADERS })
+          if (r.ok) {
+            buf.set(u, Buffer.from(await r.arrayBuffer()))
+            onProgress?.()
+            break
+          }
+        } catch {}
+        if (attempt === 2) throw new Error(`tải fail: ${u.slice(0, 90)}`)
+        await new Promise((r2) => setTimeout(r2, 800 * (attempt + 1)))
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(streams, urls.length)) }, () => next()))
+}
+
 function ffmpegConcat(parts: Buffer[], dest: string): void {
   const ts = dest.replace(/\.mp4$/, '.mp4.tmp')
   writeFileSync(ts, Buffer.concat(parts))
-  execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', ts, '-c', 'copy', '-movflags', '+faststart', dest], {
+  execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', ts, '-c', 'copy', '-bsf:a', 'aac_adtstoasc', '-movflags', '+faststart', dest], {
     stdio: ['ignore', 'ignore', 'pipe'],
   })
   try {
@@ -48,27 +109,8 @@ export interface DlOpts {
   res?: number
   title: string
   log?: (s: string) => void
-  stallMs?: number
-}
-
-/** (variant chọn theo res, cao nhất có thể dưới res) */
-function chooseVariant(
-  variants: Map<string, string>,
-  res?: number,
-): { segs: string[]; init: string | null } | null {
-  let best: { segs: string[]; init: string | null } | null = null
-  let bestH = -1
-  for (const [vurl, vtext] of variants) {
-    const { segs, init } = parseVariant(vtext, vurl)
-    const hs = [...vtext.matchAll(/RESOLUTION=(\d+)x(\d+)/g)].map((m) => Number(m[2]))
-    const h = hs.length ? Math.min(...hs) : segs.length
-    const okH = res ? h <= res : true
-    if (okH && h >= bestH && segs.length) {
-      best = { segs, init }
-      bestH = h
-    }
-  }
-  return best
+  /** số luồng song song tải segment (default 64) */
+  streams?: number
 }
 
 export async function downloadVideo(
@@ -78,122 +120,90 @@ export async function downloadVideo(
   opts: DlOpts,
 ): Promise<boolean> {
   const log = opts.log || (() => {})
-  const stallMs = opts.stallMs || 180_000
-  const variants = new Map<string, string>() // url -> body m3u8
-  const segs = new Map<string, Buffer>() // url -> body
-  let respCount = 0
+  const streams = Math.max(1, opts.streams ?? 64)
 
-  page.on('response', (r: CdpResponse) => {
-    respCount++
-    if (r.status !== 200) return
-    if (isPlaylist(r.url)) {
-      page.getResponseBody(r.requestId).then((b) => {
-        if (b) variants.set(r.url, b.toString('utf8'))
-      }, () => {})
-      return
-    }
-    const ct = r.contentType.toLowerCase()
-    if (
-      ct.includes('video') ||
-      ct.includes('mp4') ||
-      r.url.toLowerCase().endsWith('.mp4') ||
-      ct.includes('octet-stream')
-    ) {
-      page.getResponseBody(r.requestId).then(
-        (b) => {
-          if (b) segs.set(r.url, b)
-        },
-        () => {},
-      )
-    }
-  })
-
-  // navigate + chờ player render (Cloudflare có thể cần click tay)
+  // 1) navigate + chờ CF + đọc links.hls2 từ iframe recordplay
   await page.goto(videoUrl, 45_000)
-  const cfWarn = ((s: string) => log(`  ! ${s}`)).bind(null)
   let cfWarned = false
-  let variantsReady = false
+  let hls2 = ''
   const start = Date.now()
-  while (Date.now() - start < 240_000 && !variantsReady) {
+  while (Date.now() - start < 240_000 && !hls2) {
     const html = await page.html()
     if (!cfWarned && html.includes('Just a moment')) {
-      cfWarn('Cloudflare challenge — hãy click cửa sổ browser để giải')
+      log('  ! Cloudflare challenge — hãy click cửa sổ browser để giải')
       cfWarned = true
     }
-    if (html.includes('<iframe') || html.includes('responsive-player')) {
-      // gọi play & tăng tốc trong frame player
-      for (const r of await page.evalInFrames(PLAYER_FRAME_RE, `
-        try {
-          if (typeof jwplayer !== 'undefined') { jwplayer().play(); const p = jwplayer(); p.setMute(true); p.setPlaybackRate(16); }
-        } catch (e) {}`)) {}
-      await new Promise((r2) => setTimeout(r2, 500))
-      if (variants.size) {
-        variantsReady = true
-        break
-      }
-    }
+    const hits = await page.evalInFrames(PLAYER_FRAME_RE, `
+      (typeof links !== 'undefined' && links && links.hls2) ? links.hls2 : ''`)
+    hls2 = hits.find((x) => typeof x === 'string' && x.startsWith('http')) || hls2
     if (Date.now() - start > 45_000 && html.length < 100) {
       throw new Error('trang không load được (network hay chặn?)')
     }
-    await new Promise((r2) => setTimeout(r2, 1000))
+    if (!hls2) await new Promise((r2) => setTimeout(r2, 1000))
   }
-  if (!variantsReady && !variants.size) {
-    log('  ! Player không play / không bắt được playlist')
+  if (!hls2) {
+    log('  ! Không đọc được links.hls2 (source StreamHG có thể đã chết)')
     return false
   }
 
+  // 2) master → variant theo res
+  let master: string
+  try {
+    master = await fetchText(hls2)
+  } catch (e: any) {
+    log(`  ! master.m3u8: ${String(e.message).slice(0, 140)}`)
+    return false
+  }
+  const variants = parseMaster(master, hls2)
   const best = chooseVariant(variants, opts.res)
   if (!best) {
-    log('  ! Playlist không có segment nào')
+    log('  ! master không có variant nào')
     return false
   }
-  const needed = best.segs
-  log(`  $ variant ${needed.length} segment`)
+  log(`  $ ${best.w}x${best.h} ${streams} luồng`)
 
-  // đợi player tải đủ (16x nên nhanh), kẹt quá stallMs thì dừng
-  let stale = Date.now()
-  let lastGot = -1
-  while (true) {
-    const got = needed.filter((u) => segs.has(u)).length
-    if (got !== lastGot) {
-      stale = Date.now()
-      lastGot = got
-    }
-    if (Date.now() - stale > stallMs) {
-      log(`  ! Kẹt ở ${got}/${needed.length} segment (stall > ${Math.round(stallMs / 1000)}s)`)
-      break
-    }
-    if (got >= needed.length) break
-    await new Promise((r) => setTimeout(r, 1000))
+  // 3) index → segs
+  let indexText: string
+  try {
+    indexText = await fetchText(best.url)
+  } catch (e: any) {
+    log(`  ! index m3u8: ${String(e.message).slice(0, 140)}`)
+    return false
   }
-  // progress + mỗi 25% in ra stdout
-  const got = needed.filter((u) => segs.has(u)).length
-  if (got !== needed.length) log(`  ! Thiếu ${needed.length - got} segment nhưng file vẫn được ghép`)
+  const { segs, init } = parseVariant(indexText, best.url)
+  if (!segs.length) {
+    log('  ! index không có segment nào')
+    return false
+  }
+  const ordered = (init ? [init] : []).concat(segs)
 
-  const parts: Buffer[] = []
-  if (best.init) {
-    const ib = segs.get(best.init)
-    if (ib) parts.push(ib)
+  // 4) native pool tải
+  const buf = new Map<string, Buffer>()
+  let done = 0
+  let lastPrint = 0
+  const t0 = Date.now()
+  try {
+    await pooledDownload(ordered, streams, buf, () => {
+      done++
+      const pct = (done * 100) / ordered.length
+      if (pct - lastPrint >= 10 || done === ordered.length) {
+        lastPrint = pct
+        console.log(`  ${Math.floor(pct)}% (${done}/${ordered.length})`)
+      }
+    })
+  } catch (e: any) {
+    log(`  ! ${String(e.message).slice(0, 160)}`)
+    return false
   }
-  let missing = 0
-  for (const u of needed) {
-    const d = segs.get(u)
-    if (!d) {
-      missing++
-      continue
-    }
-    parts.push(d)
-  }
+  log(`  $ ${Math.round([...buf.values()].reduce((s, b) => s + b.length, 0) / 1048576)}MB / ${Math.round((Date.now() - t0) / 1000)}s | ${ordered.length} segment`)
+
+  // 5) concat + ffmpeg remux
+  const parts = ordered.map((u) => buf.get(u)).filter(Boolean) as Buffer[]
   if (!parts.length) {
     log('  ! Không có dữ liệu segment nào')
     return false
   }
-  try {
-    ffmpegConcat(parts, destPath)
-  } catch (e: any) {
-    log(`  ! ffmpeg: ${String(e).slice(0, 160)}`)
-    return false
-  }
+  ffmpegConcat(parts, destPath)
   return true
 }
 
