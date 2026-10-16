@@ -1,0 +1,17 @@
+{
+  "name": "pornavhd-cli",
+  "version": "1.0.0",
+  "description": "pornavhd.com downloader CLI (single-file exe via Node SEA)",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node dist/index.cjs",
+    "test": "node --test test/",
+    "build:sea": "node build-sea.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0"
+  }
+}

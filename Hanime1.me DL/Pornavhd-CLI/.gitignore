@@ -1,0 +1,7 @@
+dist/
+node_modules/
+downloads/
+.pw-profile/
+.pw-profile-w*/
+pornavhd.exe
+*.blob
