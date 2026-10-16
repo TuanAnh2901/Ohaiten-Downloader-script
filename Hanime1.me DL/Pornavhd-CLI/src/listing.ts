@@ -55,7 +55,11 @@ export async function crawl(
 ): Promise<Vid[]> {
   const seen = new Set<string>()
   const out: Vid[] = []
+  let lastHtml = ''
   for (let page = 1; page <= 500; page++) {
+    // chỉ sang trang kế nếu trang hiện tại có link /page/<k+1>/ (WP render khi còn);
+    // nếu không có → hết listing, không dò thêm để khỏi flash "Page not found"
+    if (page > 1 && lastHtml && !lastHtml.includes(`/page/${page}/`)) break
     let html: string
     try {
       html = await fetchPage(buildPageUrl(listUrl, page))
@@ -67,6 +71,7 @@ export async function crawl(
       log('  ! Cloudflare chặn listing (không lấy được card)')
       break
     }
+    lastHtml = html
     const cards = parseCards(html)
     const fresh = cards.filter((v) => !seen.has(v.id))
     if (!fresh.length) break

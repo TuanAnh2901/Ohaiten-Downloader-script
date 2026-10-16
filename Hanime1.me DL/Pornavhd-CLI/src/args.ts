@@ -54,6 +54,60 @@ export function parseArgs(argv: string[]): Flags {
   return flags
 }
 
+import { crawl, Vid, sanitize } from './listing'
+
+export function sliceRange(vids: Vid[], first?: number, to?: number): Vid[] {
+  const lo = Math.max(1, first || 1)
+  const hi = Math.min(to || vids.length, vids.length)
+  return vids.slice(lo - 1, hi)
+}
+
+export interface Job {
+  vids: Vid[]
+  outDir: string
+  label: string
+}
+
+/**
+ * Xây jobs từ target — listing qua fetchPage (browser).
+ * fetchPage: (url) => Promise<html string> — được wire lên browser ở runCli.
+ */
+export async function buildJobs(flags: Flags, fetchPage: (url: string) => Promise<string>): Promise<Job[]> {
+  const targets: string[] = flags.batch
+    ? (await import('node:fs')).readFileSync(flags.target, 'utf8')
+        .split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))
+    : [flags.target]
+  const jobs: Job[] = []
+  for (const t of targets) {
+    const kind = classify(t)
+    if (kind === 'actor' || kind === 'search') {
+      const slug = kind === 'actor'
+        ? t.replace(/\/$/, '').split('/actor/')[1]?.split('/')[0] || 'actor'
+        : new URL(t).searchParams.get('s')?.trim() || 'search'
+      const outDir = [flags.outputDir, sanitize(slug)].join('/')
+      console.log(`[${kind}] ${slug}`)
+      const vids = await crawl(t, fetchPage, console.log)
+      if (!vids.length) throw new Error(`Không lấy được video nào từ ${t}`)
+      const n = vids.length
+      console.log(`Tổng ${n} video (bị cắt bởi --from/--to nếu có)`)
+      jobs.push({ vids: sliceRange(vids, flags.first, flags.to), outDir, label: kind })
+    } else if (kind === 'video') {
+      const m = t.match(/\/(\d{4})\/(\d{2})\/(\d{2})\/([^/]+)/)
+      const title = m ? m[4] : 'video'
+      jobs.push({
+        vids: [{ id: '', url: t, title, duration: '' }],
+        outDir: flags.outputDir,
+        label: 'video',
+      })
+    } else if (flags.batch) {
+      console.log(`[skip] ${t} (không nhận ra URL)`)
+    } else {
+      throw new Error(`Không nhận ra target: ${t} (video URL /actor/ ?s= hoặc --batch)`)
+    }
+  }
+  return jobs
+}
+
 function printHelp() {
   console.log(`pornavhd.exe <URL video | /actor/<slug>/ | "?s=<tu-khoa>" | urls.txt --batch>
 

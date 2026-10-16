@@ -17,7 +17,7 @@ export function decodeBody(body: string, base64Encoded: boolean): Buffer {
   return Buffer.from(body, 'utf8')
 }
 
-function findBrowserExe(): string {
+export function findBrowserExe(): string {
   const cands = [
     join(process.env['ProgramFiles'] || '', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
     join(process.env['ProgramFiles(x86)'] || '', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
@@ -25,11 +25,10 @@ function findBrowserExe(): string {
     join(process.env['ProgramFiles'] || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
     join(process.env['ProgramFiles(x86)'] || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
     join(process.env['LOCALAPPDATA'] || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-    'msedge.exe',
-    'chrome.exe',
   ]
-  // PATH candidates: chỉ biết chắc khi spawn thành công — caller tự thử từng cái.
-  return cands.find((p) => existsSync(p) || p.endsWith('.exe') && !p.includes('\\')) as string
+  const hit = cands.find((p) => existsSync(p))
+  if (hit) return hit
+  return 'msedge.exe' // PATH fallback — spawn error xử lý bên dưới
 }
 
 class Cdp {
@@ -70,7 +69,10 @@ class Cdp {
         if (msg.error) p.reject(new Error(`${msg.error.message || msg.error.code} ${(msg.error.data?.slice?.(0, 120) || '')}`))
         else p.resolve(msg.result)
       } else if (msg.method) {
-        this.eventHandler(msg)
+        try {
+          const hp = this.eventHandler(msg)
+          if (hp && hp.catch) hp.catch(() => {})
+        } catch {}
       }
     } catch (e) {
       if (process.env.PWDBG) console.error('[cdp] parse/dispatch lỗi:', e)
@@ -184,16 +186,22 @@ export class Browser {
     }
   }
 
-  private async ensureAttach(targetId: string): Promise<string> {
+  private async ensureAttach(targetId: string): Promise<string | null> {
     let sid = this.sessions.get(targetId)
     if (sid) return sid
-    const res = await this.cdp.send('Target.attachToTarget', { targetId, flatten: true })
-    sid = res.sessionId
-    this.sessions.set(targetId, sid)
-    for (const m of ['Page.enable', 'Runtime.enable', 'Network.enable']) {
-      this.cdp.send(m, {}, sid).catch(() => {})
+    try {
+      const res = await this.cdp.send('Target.attachToTarget', { targetId, flatten: true })
+      sid = res.sessionId
+      this.sessions.set(targetId, sid)
+      for (const m of ['Page.enable', 'Runtime.enable', 'Network.enable']) {
+        this.cdp.send(m, {}, sid).catch(() => {})
+      }
+      return sid
+    } catch {
+      // target phát/lụi giữa chừng (common với iframe quảng cáo) — bỏ session cache
+      this.sessions.delete(targetId)
+      return null
     }
-    return sid
   }
 
   targetUrl(tid: string): string {
@@ -231,9 +239,20 @@ export class Browser {
           ],
           { stdio: ['ignore', 'ignore', 'pipe'] },
         )
+        // PATH exe không tồn tại → spawn fires async 'error' event; bọc để loop thử candidate kế tiếp
+        proc.on('error', () => {})
+        let spawnFailed = false
+        proc.once('error', () => { spawnFailed = true })
         exe = cand
         const wsUrl = await new Promise<string>((resolve, reject) => {
           const timer = setTimeout(() => reject(new Error('không thấy DevTools ws URL')), 15000)
+          const checkFail = setInterval(() => {
+            if (spawnFailed) {
+              clearTimeout(timer)
+              clearInterval(checkFail)
+              reject(new Error('spawn lỗi (ENOENT?)'))
+            }
+          }, 250)
           let buf = ''
           proc!.stderr!.on('data', (c) => {
             buf += String(c)
@@ -241,11 +260,13 @@ export class Browser {
             const m = buf.match(/DevTools listening on (ws:\/\/\S+)/)
             if (m) {
               clearTimeout(timer)
+              clearInterval(checkFail)
               resolve(m[1])
             }
           })
           proc!.on('exit', () => {
             clearTimeout(timer)
+            clearInterval(checkFail)
             reject(new Error('browser process exit sớm'))
           })
         })
