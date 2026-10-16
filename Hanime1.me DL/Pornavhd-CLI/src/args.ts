@@ -1,6 +1,4 @@
-// src/args.ts — classify target + flags (thân CLI, sẽ hoàn thiện Task 5)
-import { parseCards, sanitize, buildPageUrl, crawl, Vid } from './listing'
-
+// src/args.ts — parse flags + classify target (thân CLI, wiring đầy đủ ở Task 5)
 export interface Flags {
   batch: boolean
   outputDir: string
@@ -13,7 +11,7 @@ export interface Flags {
   target: string
 }
 
-export type TargetKind = 'video' | 'actor' | 'search' | 'batch'
+export type TargetKind = 'search' | 'actor' | 'video' | 'unknown'
 
 export function classify(target: string): TargetKind {
   if (/[?&]s=/.test(target)) return 'search'
@@ -32,69 +30,42 @@ export function parseArgs(argv: string[]): Flags {
     target: '',
   }
   const rest: string[] = []
-  for (let i = 0; i < argv.length; i++) {
+  const num = (name: string): number => {
+    const v = Number(argv[++i])
+    if (!Number.isFinite(v)) throw new Error(`thiếu số sau ${name}`)
+    return v
+  }
+  let i = 0
+  for (; i < argv.length; i++) {
     const a = argv[i]
-    const num = () => {
-      const v = Number(argv[++i])
-      if (!Number.isFinite(v)) throw new Error(`thiếu số sau ${a}`)
-      return v
-    }
     if (a === '--batch') flags.batch = true
     else if (a === '--list') flags.list = true
     else if (a === '--output-dir') flags.outputDir = argv[++i]
-    else if (a === '--jobs') flags.jobs = num()
-    else if (a === '--res') flags.res = num()
-    else if (a === '--from') flags.first = num()
-    else if (a === '--to') flags.to = num()
-    else if (a === '--retries') flags.retries = num()
-    else if (a === '--help' || a === '-h') console.log('pornavhd.exe <URL|file.txt --batch> [flags]')
-    else rest.push(a)
+    else if (a === '--jobs') flags.jobs = num(a)
+    else if (a === '--res') flags.res = num(a)
+    else if (a === '--from') flags.first = num(a)
+    else if (a === '--to') flags.to = num(a)
+    else if (a === '--retries') flags.retries = num(a)
+    else if (a === '--help' || a === '-h') printHelp()
+    else if (!a.startsWith('--')) rest.push(a)
   }
   if (rest.length !== 1) throw new Error('cần đúng 1 target (URL hoặc file .txt cho --batch)')
   flags.target = rest[0]
   return flags
 }
 
-// Trả jobs list: { vids, outDir, label } — dùng chung mọi target mode
-export interface Job {
-  vids: Vid[]
-  outDir: string
-  label: string
-}
+function printHelp() {
+  console.log(`pornavhd.exe <URL video | /actor/<slug>/ | "?s=<tu-khoa>" | urls.txt --batch>
 
-export async function buildJobs(flags: Flags): Promise<Job[]> {
-  const targets = flags.batch
-    ? require('fs').readFileSync(flags.target, 'utf8').split(/\r?\n/)
-        .map((l: string) => l.trim()).filter((l: string) => l && !l.startsWith('#'))
-    : [flags.target]
-  const jobs: Job[] = []
-  for (const t of targets) {
-    const kind = classify(t)
-    if (kind === 'actor' || kind === 'search') {
-      const slug = kind === 'actor'
-        ? t.replace(/\/$/, '').split('/actor/')[1].split('/')[0]
-        : new URL(t).searchParams.get('s')?.trim() || 'search'
-      const outDir = [flags.outputDir, sanitize(slug)].join('/')
-      const label = kind === 'actor' ? 'actor' : 'search'
-      console.log(`[${label}] ${slug}`)
-      // placeholder fetch tới Task 5 (browser); đây là điểm inject fetchPage
-      const vids = await crawl(t, () => Promise.reject(new Error('fetch not wired yet')))
-      if (!vids.length) throw new Error(`Không lấy được video nào từ ${t}`)
-      const lo = Math.max(1, flags.first || 1)
-      const hi = Math.min(flags.to || vids.length, vids.length)
-      console.log(`Tổng ${vids.length} video (${lo}..${hi})`)
-      jobs.push({ vids: vids.slice(lo - 1, hi), outDir, label })
-    } else if (kind === 'video') {
-      const m = t.match(/\/(\d{4})\/(\d{2})\/(\d{2})\/([^/]+)/)
-      const title = m ? m[4] : 'video'
-      jobs.push({
-        vids: [{ id: '', url: t, title, duration: '' }],
-        outDir: flags.outputDir,
-        label: 'video',
-      })
-    } else {
-      throw new Error(`Không nhận ra target: ${t} (video URL /actor/ ?s= hoặc --batch)`)
-    }
-  }
-  return jobs
+flags:
+  --batch        target là file .txt (1 URL/dòng, # comment)
+  --output-dir   thư mục xuất (default ./downloads)
+  --list         chỉ liệt kê, không tải
+  --jobs N       số tab/browser tải song song (default 1)
+  --res N        giới hạn chiều cao variant, vd 720
+  --from N       video bắt đầu (thứ tự listing)
+  --to N         video kết thúc
+  --retries N    retry mỗi video khi fail (default 2)
+
+yêu cầu: Edge/Chrome + ffmpeg trong PATH`)
 }

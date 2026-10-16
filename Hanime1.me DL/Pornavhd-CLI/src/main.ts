@@ -1,13 +1,14 @@
-import * as listing from './listing'
-import * as argsmod from './args'
+export {
+  Flags,
+  parseArgs,
+  classify,
+} from './args'
+export type { TargetKind } from './args'
+export { parseCards, sanitize, buildPageUrl, isCfChallenge, crawl } from './listing'
+export type { Vid } from './listing'
+export { decodeBody, Browser, Page } from './cdp'
+export type { CdpResponse } from './cdp'
 
 if (require.main === module) {
-  argsmod.runCli(process.argv.slice(2)).then(
-    (code) => process.exit(code),
-    (e) => {
-      console.error(e); process.exit(1)
-    },
-  )
+  console.log('pornavhd-cli entry (CLI wiring Task 5)')
 }
-
-export = { ...listing, ...argsmod }
