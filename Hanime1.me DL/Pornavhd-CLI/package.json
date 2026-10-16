@@ -7,7 +7,7 @@
   "scripts": {
     "build": "node build.mjs",
     "dev": "node dist/index.cjs",
-    "test": "node --test test/",
+    "test": "node --test",
     "build:sea": "node build-sea.mjs"
   },
   "devDependencies": {
