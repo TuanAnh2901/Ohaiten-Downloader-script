@@ -8,7 +8,7 @@ export interface Flags {
   first?: number
   to?: number
   retries: number
-  /** số luồng song song tải segment mỗi video (mặc định 64) */
+  /** số luồng song song tải segment mỗi video (mặc định 96) */
   streams: number
   /** path file log (default <output-dir>/pornavhd.log) */
   logFile?: string
@@ -33,7 +33,7 @@ export function parseArgs(argv: string[]): Flags {
     list: false,
     jobs: 1,
     retries: 2,
-    streams: 64,
+    streams: 96,
     redo: false,
     target: '',
   }
@@ -137,7 +137,7 @@ flags:
   --from N       video bắt đầu (thứ tự listing)
   --to N         video kết thúc
   --retries N    retry mỗi video khi fail (default 2)
-  --streams N    số luồng song song tải segment mỗi video (default 64)
+  --streams N    số luồng song song tải segment mỗi video (default 96)
   --log-file P   path file log (default <output-dir>/pornavhd.log)
   --redo         tải lại dù archive đã ghi video này là tải xong
 

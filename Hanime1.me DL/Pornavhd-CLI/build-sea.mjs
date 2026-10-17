@@ -6,7 +6,7 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const outExe = resolve(__dirname, 'pornavhd.exe')
+const outExe = resolve(__dirname, process.env.SEA_OUT || 'pornavhd.exe')
 
 console.log('[SEA] Step 0: check Node >=22 (global WebSocket CDP client cần >=22)...')
 const mm = process.version.match(/^v(\d+)\./)

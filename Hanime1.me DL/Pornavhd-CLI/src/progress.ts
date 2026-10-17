@@ -1,6 +1,7 @@
-// src/progress.ts — MultiProgress: mỗi job 1 hàng, redraw stderr bằng ANSI cursor-up.
-// Khác AnimehayCLI: slot xong in 1 dòng kết luận rồi THU GỌN (không phình stack).
-// Zero-dep, copy pattern từ AnimehayCLI/src/multiprogress.ts.
+// src/progress.ts — MultiProgress: MỌI thứ về stdout (bar + log cùng stream → layout không nát).
+// Slot tái dùng theo label: retry không nhảy hàng, không spam "[khởi động...]".
+// Bất biến: sau mỗi lần vẽ, cursor nằm dưới khối bar. erase(): lên rowCount dòng rồi clear từng dòng.
+// Zero-dep, pattern AnimehayCLI nhưng log đi qua đây luôn.
 
 export function formatBytes(n: number): string {
   if (n < 0) return '?'
@@ -47,6 +48,7 @@ export interface SlotState {
   bytes: number
   t0: number
   started: boolean
+  held: boolean // kết luận đã in — slot rảnh, retry cùng label chiếm lại
 }
 
 export interface FinishInfo {
@@ -62,10 +64,19 @@ export class MultiProgress {
   private lastPaint = 0
   private rowCount = 0
 
+  /** cùng label + slot đã xong → tái dùng (retry); chưa → hàng mới */
   createSlot(label: string): SlotState {
-    const s: SlotState = { label, done: 0, total: 0, bytes: 0, t0: 0, started: false }
+    const free = this.slots.find((s) => s.label === label && s.held)
+    if (free) {
+      free.started = false
+      free.done = free.total = free.bytes = 0
+      free.held = false
+      this.render()
+      return free
+    }
+    const s: SlotState = { label, done: 0, total: 0, bytes: 0, t0: 0, started: false, held: false }
     this.slots.push(s)
-    this.paint(true)
+    this.render()
     return s
   }
 
@@ -79,30 +90,45 @@ export class MultiProgress {
     s.total = total
     s.bytes = bytes
     const now = Date.now()
-    if (now - this.lastPaint >= 100) this.paint(false)
+    if (now - this.lastPaint >= 100) {
+      this.lastPaint = now
+      this.erase()
+      this.render()
+    }
   }
 
-  /** slot xong → in dòng kết luận bền (stdout), thu gọn hàng */
+  /** in 1 dòng log: xóa khối bar → in log → vẽ lại bar dưới nó */
+  log(line: string): void {
+    this.erase()
+    process.stdout.write(`\r\x1b[K${line}\n`)
+    this.render()
+  }
+
+  /** slot xong → in dòng kết luận bền, slot giữ lại (held) để retry tái dùng */
   finish(s: SlotState, info: FinishInfo): void {
-    this.slots = this.slots.filter((x) => x !== s)
+    this.erase()
     const tag = info.end === 'ok' ? '[ok]  ' : info.end === 'skip' ? '[skip]' : '[FAIL]'
     const time = info.secs ? ` ${info.secs}s` : ''
     const size = info.mb ? ` ${info.mb}` : ''
-    process.stdout.write(`${tag} ${s.label}${size}${time} ${info.msg}\n`)
-    if (this.slots.length) this.paint(true) // redraw stack còn lại từ đầu
+    process.stdout.write(`\r\x1b[K${tag} ${s.label}${size}${time} ${info.msg}\n`)
+    s.held = true
+    this.render()
   }
 
-  private paint(force: boolean): void {
-    const now = Date.now()
-    if (!force && now - this.lastPaint < 100) return
-    this.lastPaint = now
-    const lines = this.slots.map((s) => {
+  private erase(): void {
+    if (!this.started || !this.rowCount) return
+    process.stdout.write(`\x1b[${this.rowCount}A`)
+    for (let i = 0; i < this.rowCount; i++) process.stdout.write('\r\x1b[K\x1b[1B')
+  }
+
+  /** vẽ khối bar từ vị trí cursor hiện tại — chỉ các slot đang chạy (held không vẽ) */
+  private render(): void {
+    const lines = this.slots.filter((s) => !s.held).map((s) => {
       if (!s.started) return `${s.label.slice(0, 22).padEnd(23)} [khởi động...]`
       const el = (Date.now() - s.t0) / 1000
       return barLine(s.label, s.done, s.total, s.bytes, el)
     })
-    if (this.started) process.stderr.write(`\r\x1b[${this.rowCount}A`)
-    for (const l of lines) process.stderr.write(`\r\x1b[K${l}\n`)
+    for (const l of lines) process.stdout.write(`\r\x1b[K${l}\n`)
     this.started = true
     this.rowCount = lines.length
   }

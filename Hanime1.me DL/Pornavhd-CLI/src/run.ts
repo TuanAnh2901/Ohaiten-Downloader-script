@@ -159,6 +159,7 @@ export async function runCli(argv: string[]): Promise<number> {
     for (const job of jobs) {
       mkdirSync(job.outDir, { recursive: true })
       const logger = new Logger(flags.logFile ? flags.logFile : join(job.outDir, 'pornavhd.log'))
+      logger.consoleOut = (l) => mp.log(l)
       logger.log('run', `=== bắt đầu: ${flags.target} | jobs=${flags.jobs} streams=${flags.streams} res=${flags.res || 'max'} ===`)
       const idx = { i: 0 }
       const workers = Math.max(1, Math.min(flags.jobs, job.vids.length))

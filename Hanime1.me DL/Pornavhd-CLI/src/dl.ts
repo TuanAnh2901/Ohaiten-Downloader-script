@@ -273,17 +273,18 @@ export async function downloadVideo(
   // 1) navigate + chờ CF, chỉ cần LẤY embed recordplay/playrecord (code) từ HTML
   await page.goto(videoUrl, 45_000)
   let cfWarned = false
-  let embedUrl = ''
+  let embedUrls: string[] = []
   let links2 = '' // fallback cũ: window.links.hls2 đọc thẳng từ iframe
   const start = Date.now()
-  while (Date.now() - start < 240_000 && !embedUrl && !links2) {
+  while (Date.now() - start < 240_000 && !embedUrls.length && !links2) {
     const html = await page.html()
     if (!cfWarned && html.includes('Just a moment')) {
       log('  ! Cloudflare challenge — hãy click cửa sổ browser để giải')
       cfWarned = true
     }
-    embedUrl = html.match(/https:\/\/(?:recordplay|playrecord)\.biz\/(?:e|embed)\/[a-z0-9]+/)?.[0] || ''
-    if (!embedUrl) {
+    // nhiều URL embed (code cũ chết được thay bằng mới trong trang) — thử lần lượt hết
+    embedUrls = [...new Set(html.match(/https:\/\/(?:recordplay|playrecord)\.biz\/(?:e|embed)\/[a-z0-9]+/g) || [])]
+    if (!embedUrls.length) {
       const hits = await page.evalInFrames(PLAYER_FRAME_RE, `
         (typeof links !== 'undefined' && links && links.hls2) ? links.hls2 : ''`)
       links2 = hits.find((x) => typeof x === 'string' && x.startsWith('http')) || ''
@@ -291,10 +292,10 @@ export async function downloadVideo(
     if (Date.now() - start > 45_000 && html.length < 100) {
       throw new Error('trang không load được (network hay chặn?)')
     }
-    if (!embedUrl && !links2) await new Promise((r2) => setTimeout(r2, 1000))
+    if (!embedUrls.length && !links2) await new Promise((r2) => setTimeout(r2, 1000))
   }
 
-  const nat = embedUrl ? await downloadNative(embedUrl, destPath, opts) : false
+  const nat = embedUrls.length ? await downloadNative(embedUrls, destPath, opts) : false
   if (nat) return true
 
   // 2) FALLBACK đường hls2 cũ (chỉ chạy khi native path chết)
@@ -305,9 +306,19 @@ export async function downloadVideo(
   return downloadFromMaster(links2, destPath, opts, 'hls2', undefined)
 }
 
-/** Mirror recordplay rỗng placeholder `_,,,,,.urlset` → bộ variant đầy `_,l,n,h,` (chuẩn của họ) */
-export function fixMirrorUrl(u: string): string {
-  return u.replace(/_[,]+(?=\.urlset)/, '_,l,n,h,')
+/** Mirror recordplay: placeholder `_,…,.urlset` là DANH SÁCH chất lượng phản ánh nội dung thật —
+ * mỗi file có tập variants riêng (02: l,n,h; 09: chỉ n,h; 03: dạng rút gọn `_n/`).
+ * Expand thành các candidate đơn lẻ cao→thấp, server trả 404 cho combo không có. */
+export function masterCandidates(u: string): string[] {
+  const m = u.match(/^(.*)_([^/?]*),([^/?]*)\.urlset\/(master\.(?:txt|m3u8))(\?.*)?$/)
+  if (!m) return [u]
+  // server chỉ có 1 subset chất lượng mỗi file: thử slot đơn cao→thấp, rồi combo đầy đủ, rồi dạng rút gọn _n/
+  const tail = `${m[4]}${m[5] || ''}`
+  return [
+    ...['h', 'n', 'l'].map((q) => `${m[1]}_,${q},.urlset/${tail}`),
+    `${m[1]}_,l,n,h,.urlset/${tail}`,
+    `${m[1]}_n/${tail}`,
+  ]
 }
 
 /** Chuỗi tải 1 master m3u8: chọn variant (cao nhất ≤ res) → tải → ghép → verify.
@@ -324,9 +335,10 @@ async function downloadFromMaster(
   const streams = Math.max(1, opts.streams ?? 64)
   let master = ''
   let masterErr = ''
-  // nguyên bản trước, hết thì swap sang domain mirror khác trong pool (chỉ hls3/hls2 — hls4 là host riêng)
+  // 1) nguyên bản; 2) placeholder đơn (h→n→l, mỗi file có chất lượng riêng); 3) swap domain pool (CF chặn)
   const candidates = [masterUrl]
   if (sourceLabel !== 'hls4') {
+    for (const c of masterCandidates(masterUrl)) if (!candidates.includes(c)) candidates.push(c)
     for (const d of MIRROR_DOMAINS) {
       const s = swapMirrorDomain(masterUrl, d)
       if (s !== masterUrl && !candidates.includes(s)) candidates.push(s)
@@ -391,7 +403,7 @@ async function downloadFromMaster(
 /** ✅ ĐƯỜNG CHÍNH: bản thu cho người xem nằm trong "PNG" tiktokcdn —
  *  mỗi segment = 58-62 byte PNG shell + TS thật nối sau IEND. Cả chuỗi fetch được native:
  *  /e|/embed/<code> → links.hls4 (recordplay/playrecord /stream/) → master → variant → index → tiktok PNG. */
-async function downloadNative(embedUrl: string, destPath: string, opts: DlOpts): Promise<boolean> {
+async function downloadNative(embedUrls: string[], destPath: string, opts: DlOpts): Promise<boolean> {
   const log = opts.log || (() => {})
   const fileLog = opts.fileLog || (() => {})
   // chuỗi nguồn: hls4 (segment "PNG" tiktok → strip shell) → hls3 (mirror .txt, TS thật đuôi .woff2) → hls2
@@ -401,15 +413,14 @@ async function downloadNative(embedUrl: string, destPath: string, opts: DlOpts):
     { key: 'hls2', label: 'hls2' },
   ]
   for (const s of sources) {
-    // mirror host xoay vòng mỗi lần fetch /e/ — thử 2 lần, lần 2 refetch lấy host sống mới
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const res = await resolveLinks(embedUrl, log)
-      if (!res || !res.links[s.key]) break // nguồn không tồn tại với video này → nguồn kế
+    for (const eu of embedUrls) {
+      const res = await resolveLinks(eu, log)
+      if (!res || !res.links[s.key]) continue // nguồn không tồn tại với code này → code kế
       const raw = res.links[s.key]!
       const fixed = raw.startsWith('http') ? raw : res.base + raw
-      if (await downloadFromMaster(fixMirrorUrl(fixed), destPath, opts, s.label, s.transform)) return true
-      log(`  ! ${s.label} ${attempt ? '(host xoay mới)' : ''} vẫn chết`)
-      fileLog(`${s.label} attempt ${attempt + 1} fail → ${attempt ? 'sang nguồn kế' : 'refetch /e/ lấy host mới'}`)
+      if (await downloadFromMaster(fixed, destPath, opts, s.label, s.transform)) return true
+      log(`  ! ${s.label} chết`)
+      fileLog(`${s.label} (code ${eu.slice(-14)}) chết → nguồn kế`)
     }
   }
   fileLog('hết đường: cả hls4/hls3/hls2 đều chết')

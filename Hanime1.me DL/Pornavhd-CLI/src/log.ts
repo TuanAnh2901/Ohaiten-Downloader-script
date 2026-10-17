@@ -2,6 +2,9 @@
 import { appendFileSync } from 'node:fs'
 
 export class Logger {
+  /** console xuất qua MultiProgress (in đúng vị trí giữa các hàng bar) */
+  consoleOut: ((line: string) => void) | null = null
+
   constructor(private file: string | null) {}
 
   /** ghi log file (luôn) — console KHÔNG in (tránh phá bar) */
@@ -13,10 +16,10 @@ export class Logger {
     } catch {}
   }
 
-  /** event quan trọng: file + console */
+  /** event quan trọng: file + console (qua MultiProgress nếu có) */
   key(scope: string, msg: string): void {
     this.log(scope, msg)
-    console.log(msg)
+    this.consoleOut ? this.consoleOut(msg) : console.log(msg)
   }
 }
 
