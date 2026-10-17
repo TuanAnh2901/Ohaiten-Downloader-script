@@ -105,11 +105,17 @@ export async function buildJobs(flags: Flags, fetchPage: (url: string) => Promis
     } else if (kind === 'video') {
       const m = t.match(/\/(\d{4})\/(\d{2})\/(\d{2})\/([^/]+)/)
       const title = m ? m[4] : 'video'
-      jobs.push({
-        vids: [{ id: '', url: t, title, duration: '' }],
-        outDir: flags.outputDir,
-        label: 'video',
-      })
+      // gộp các URL video vào 1 job (cùng outDir) — --jobs N mới có tác dụng trong batch
+      const last = jobs[jobs.length - 1]
+      if (last && last.outDir === flags.outputDir && last.label === 'video') {
+        last.vids.push({ id: '', url: t, title, duration: '' })
+      } else {
+        jobs.push({
+          vids: [{ id: '', url: t, title, duration: '' }],
+          outDir: flags.outputDir,
+          label: 'video',
+        })
+      }
     } else if (flags.batch) {
       console.log(`[skip] ${t} (không nhận ra URL)`)
     } else {
