@@ -60,9 +60,20 @@ export function chooseVariant(vs: HlsVariant[], res?: number): HlsVariant | null
   return ok.reduce((a, b) => (b.h > a.h ? b : a))
 }
 
+/** Host mirror CF trả "Access Blocked" — quên cả run (retry lại chỉ tốn request, càng bị chặn chặt hơn) */
+const CF_BANNED = new Set<string>()
+
 function fetchText(url: string): Promise<string> {
   return fetch(url, { headers: DL_HEADERS }).then(async (r) => {
-    if (!r.ok) throw new Error(`HTTP ${r.status} ${url.slice(0, 90)}`)
+    if (!r.ok) {
+      if (r.status === 403) {
+        const body = await r.text().catch(() => '')
+        if (body.includes('Access Blocked') || body.includes('Just a moment')) {
+          try { CF_BANNED.add(new URL(url).hostname) } catch {}
+        }
+      }
+      throw new Error(`HTTP ${r.status} ${url.slice(0, 90)}`)
+    }
     return r.text()
   })
 }
@@ -253,6 +264,18 @@ function swapMirrorDomain(u: string, domain: string): string {
   return u.replace(m[2], labels[0] + '.' + domain)
 }
 
+/** Ma trận master đầy đủ: domain swap × mọi slot placeholder (file chỉ có 1 bảng chất lượng —
+ *  slot h trên domain khác thường 404, phải thử h→n→l riêng từng domain). Đã lọc trùng. */
+export function masterSwapCandidates(masterUrl: string, domains: string[]): string[] {
+  const out = [masterUrl]
+  for (const d of domains) {
+    const s = swapMirrorDomain(masterUrl, d)
+    if (s === masterUrl) continue
+    for (const c of [s, ...masterCandidates(s)]) if (!out.includes(c)) out.push(c)
+  }
+  return out
+}
+
 /** Bait recordplay: segment "PNG" 1×1 của tiktokcdn — fragment TS thật nối SAU IEND chunk (58-62 byte đầu là PNG shell) */
 export function stripPngPayload(buf: Buffer): Buffer {
   const i = buf.indexOf(Buffer.from('49454e44ae426082', 'hex'))
@@ -336,15 +359,16 @@ async function downloadFromMaster(
   let master = ''
   let masterErr = ''
   // 1) nguyên bản; 2) placeholder đơn (h→n→l, mỗi file có chất lượng riêng); 3) swap domain pool (CF chặn)
+  const isBanned = (u: string) => { try { return CF_BANNED.has(new URL(u).hostname) } catch { return false } }
   const candidates = [masterUrl]
   if (sourceLabel !== 'hls4') {
-    for (const c of masterCandidates(masterUrl)) if (!candidates.includes(c)) candidates.push(c)
-    for (const d of MIRROR_DOMAINS) {
-      const s = swapMirrorDomain(masterUrl, d)
-      if (s !== masterUrl && !candidates.includes(s)) candidates.push(s)
+    for (const c of masterCandidates(masterUrl)) if (!candidates.includes(c) && !isBanned(c)) candidates.push(c)
+    for (const c of masterSwapCandidates(masterUrl, MIRROR_DOMAINS)) {
+      if (!candidates.includes(c) && !isBanned(c)) candidates.push(c)
     }
   }
   outer: for (const cu of candidates) {
+    if (isBanned(cu)) { log(`  ! skip host CF chặn: ${new URL(cu).hostname}`); continue }
     const tries = cu === candidates[0] ? 2 : 1
     for (let attempt = 0; attempt < tries; attempt++) {
       try {
@@ -355,6 +379,7 @@ async function downloadFromMaster(
         break outer
       } catch (e: any) {
         masterErr = String(e.message)
+        fileLog(`   ! candidate fail: ${e.cause?.code || e.cause?.message || e.message} :: ${cu.slice(24, 110)}`)
         if (attempt < tries - 1) await new Promise((r) => setTimeout(r, 2000))
       }
     }

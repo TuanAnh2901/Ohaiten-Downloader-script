@@ -61,6 +61,17 @@ test('masterCandidates: dò slot đơn h/n/l + combo + dạng rút gọn _n/', (
   assert.deepStrictEqual(masterCandidates('https://x.m.cyou/1ghk/hls3/01/04975/cd_n/master.txt'), ['https://x.m.cyou/1ghk/hls3/01/04975/cd_n/master.txt'])
 })
 
+test('masterSwapCandidates: swap domain × nhân slot placeholder cho TỪNG domain (bug 06: trước đây chỉ chạy slot gốc)', () => {
+  const { masterSwapCandidates } = require('../dist/index.cjs')
+  const u = 'https://cv9fqnu812v.riskanalytics.cfd/1ghkpx2e8jnal/hls3/01/05158/x6hfhy5wd0br_,h,.urlset/master.txt'
+  const cs = masterSwapCandidates(u, ['modernfitnessguru.cyou'])
+  // phải có _,n, trên cyou — slot cyou H 404 còn N sống (06 thật)
+  assert.ok(cs.some((c) => c.endsWith('cyou/1ghkpx2e8jnal/hls3/01/05158/x6hfhy5wd0br_,n,.urlset/master.txt')))
+  assert.ok(cs.some((c) => c.endsWith('cyou/1ghkpx2e8jnal/hls3/01/05158/x6hfhy5wd0br_,l,.urlset/master.txt')))
+  // domain chết 2 label → giữ nguyên không bị thêm
+  assert.strictEqual(masterSwapCandidates(u, []).length, 1)
+})
+
 test('parseFfprobeDuration: đọc duration ffprobe', () => {
   const { parseFfprobeDuration } = require('../dist/index.cjs')
   assert.strictEqual(parseFfprobeDuration('duration=1627.946233'), 1627.946233)

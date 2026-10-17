@@ -10,7 +10,7 @@ export { parseCards, sanitize, buildPageUrl, isCfChallenge, crawl } from './list
 export type { Vid } from './listing'
 export { decodeBody, Browser, Page } from './cdp'
 export type { CdpResponse } from './cdp'
-export { parseVariant, parseMaster, chooseVariant, isAdHost, isPlaylist, downloadVideo, unpackPacked, extractLinks, resolveLinks, stripPngPayload, verifyVideo, masterCandidates } from './dl'
+export { parseVariant, parseMaster, chooseVariant, isAdHost, isPlaylist, downloadVideo, unpackPacked, extractLinks, resolveLinks, stripPngPayload, verifyVideo, masterCandidates, masterSwapCandidates } from './dl'
 export { barLine, formatBytes, formatEta, formatSpeed, MultiProgress, slotFragment } from './progress'
 export { Logger, parseFfprobeDuration } from './log'
 export { vidUrlJoin } from './urljoin'
