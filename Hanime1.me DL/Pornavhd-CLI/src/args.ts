@@ -10,6 +10,10 @@ export interface Flags {
   retries: number
   /** số luồng song song tải segment mỗi video (mặc định 64) */
   streams: number
+  /** path file log (default <output-dir>/pornavhd.log) */
+  logFile?: string
+  /** tải lại dù archive đã có */
+  redo: boolean
   target: string
 }
 
@@ -30,6 +34,7 @@ export function parseArgs(argv: string[]): Flags {
     jobs: 1,
     retries: 2,
     streams: 64,
+    redo: false,
     target: '',
   }
   const rest: string[] = []
@@ -50,6 +55,8 @@ export function parseArgs(argv: string[]): Flags {
     else if (a === '--to') flags.to = num(a)
     else if (a === '--retries') flags.retries = num(a)
     else if (a === '--streams') flags.streams = num(a)
+    else if (a === '--log-file') flags.logFile = argv[++i]
+    else if (a === '--redo') flags.redo = true
     else if (a === '--help' || a === '-h') printHelp()
     else if (!a.startsWith('--')) rest.push(a)
   }
@@ -125,6 +132,8 @@ flags:
   --to N         video kết thúc
   --retries N    retry mỗi video khi fail (default 2)
   --streams N    số luồng song song tải segment mỗi video (default 64)
+  --log-file P   path file log (default <output-dir>/pornavhd.log)
+  --redo         tải lại dù archive đã ghi video này là tải xong
 
 yêu cầu: Edge/Chrome + ffmpeg trong PATH`)
 }

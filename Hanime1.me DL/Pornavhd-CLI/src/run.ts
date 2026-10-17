@@ -1,5 +1,5 @@
 // src/run.ts — runCli: listing browser + download worker pool (event loop)
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, appendFileSync, readFileSync } from 'node:fs'
 import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseArgs, buildJobs, Flags } from './args'
@@ -7,6 +7,8 @@ import { crawl, parseCards, isCfChallenge, Vid, sanitize } from './listing'
 import { Browser, Page } from './cdp'
 import { downloadVideo } from './dl'
 import { stat } from 'node:fs/promises'
+import { MultiProgress } from './progress'
+import { Logger } from './log'
 
 const EXE_DIR = process.execPath.split(/[\\/]/).pop()!.toLowerCase() === 'node.exe'
   ? process.cwd() // chạy bằng node (dev): relative cwd như bản Python
@@ -34,33 +36,97 @@ async function fetchPageHtml(browser: Browser, url: string, log = console.log): 
   }
 }
 
+interface Row {
+  title: string
+  status: string
+  mb: string
+  secs: string
+  note: string
+}
+
 async function downloadOne(
   browser: Browser,
   v: Vid,
   flags: Flags,
   outDir: string,
-): Promise<boolean> {
+  logger: Logger,
+  mp: MultiProgress,
+  rows: Row[],
+  failedUrls: string[],
+): Promise<'ok' | 'fail' | 'skip'> {
   const fname = sanitize(v.title) + '.mp4'
   const dest = join(outDir, fname)
-  try {
-    const st = await stat(dest).catch(() => null)
-    if (st && st.size >= 1024 * 1024) {
-      console.log(`[skip] ${fname} (đã có)`)
-      return true
-    }
-  } catch {}
+  const slot = mp.createSlot(fname)
+  let rowKind: 'ok' | 'fail' | 'skip' = 'fail'
+  const end = (endKind: 'ok' | 'fail' | 'skip', msg: string, mb = 0, secs = 0, note = '') => {
+    mp.finish(slot, { end: endKind, msg, mb, secs })
+    rowKind = endKind
+    const old = rows.findIndex((r) => r.title === fname)
+    const row: Row = { title: fname, status: endKind, mb: mb ? `${mb}MB` : '', secs: secs ? `${secs}s` : '', note }
+    if (old >= 0) rows[old] = row
+    else rows.push(row)
+    logger.log(fname, `${endKind.toUpperCase()} ${msg}${note ? ' | ' + note : ''}`)
+  }
+  const st = await stat(dest).catch(() => null)
+  if (st && st.size >= 1024 * 1024) {
+    end('skip', 'đã có file')
+    return rowKind
+  }
+  // archive chống tải lại
+  const arch = join(outDir, '.pornavhd-archive')
+  const seen = readArchive(arch)
+  if (seen.has(v.url) && !flags.redo) {
+    end('skip', 'đã tải xong trước đó (archive) — dùng --redo để tải lại')
+    return rowKind
+  }
+
+  const t0 = Date.now()
+  const fileLog = (s: string) => logger.log(fname, s)
   const page = await browser.newPage('about:blank')
   try {
-    const ok = await downloadVideo(page, v.url, dest, { res: flags.res, title: v.title, log: console.log, streams: flags.streams })
-    console.log(`[${ok ? 'ok' : 'FAIL'}] ${fname}`)
-    return ok && (await stat(dest).then((s) => s.size > 1024, () => false))
-  } catch (e: any) {
-    console.log(`  ! ${String(e).slice(0, 180)}`)
-    console.log(`[FAIL] ${fname}`)
+    const ok = await downloadVideo(page, v.url, dest, {
+      res: flags.res,
+      title: v.title,
+      log: (s) => logger.key(fname, s.trim()),
+      fileLog,
+      streams: flags.streams,
+      onProgress: (done, total, bytes) => mp.update(slot, done, total, bytes),
+    })
+    if (ok) {
+      const secs = Math.round((Date.now() - t0) / 1000)
+      appendFileSync(arch, `${v.url}\t${fname}\n`)
+      const fi = failedUrls.indexOf(v.url)
+      if (fi >= 0) failedUrls.splice(fi, 1)
+      end('ok', '', Math.round((await stat(dest)).size / 1048576), secs)
+      return rowKind
+    }
+    // downloadVideo tự log lý do; remove file rác nếu có
     await unlinkAny(dest)
-    return false
+    failedUrls.push(v.url)
+    end('fail', 'tải thất bại (xem log để biết lý do + biện pháp đã thử)')
+    return rowKind
+  } catch (e: any) {
+    const why = String(e).slice(0, 180)
+    fileLog(`EXCEPTION: ${why}`)
+    await unlinkAny(dest)
+    failedUrls.push(v.url)
+    end('fail', why)
+    return rowKind
   } finally {
     await page.close().catch(() => {})
+  }
+}
+
+function readArchive(arch: string): Set<string> {
+  try {
+    return new Set(
+      readFileSync(arch, 'utf8')
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .map((l) => l.split('\t')[0]),
+    )
+  } catch {
+    return new Set()
   }
 }
 
@@ -87,11 +153,13 @@ export async function runCli(argv: string[]): Promise<number> {
       }
       return 0
     }
-    let total = 0
-    let done = 0
-    let failed = 0
+    const mp = new MultiProgress()
+    const rows: Row[] = []
+    const failedUrls: string[] = []
     for (const job of jobs) {
       mkdirSync(job.outDir, { recursive: true })
+      const logger = new Logger(flags.logFile ? flags.logFile : join(job.outDir, 'pornavhd.log'))
+      logger.log('run', `=== bắt đầu: ${flags.target} | jobs=${flags.jobs} streams=${flags.streams} res=${flags.res || 'max'} ===`)
       const idx = { i: 0 }
       const workers = Math.max(1, Math.min(flags.jobs, job.vids.length))
       // listing browser không dùng cho download → mỗi worker một browser riêng (profile -wN)
@@ -107,24 +175,40 @@ export async function runCli(argv: string[]): Promise<number> {
               if (i >= job.vids.length) break
               idx.i++
               const v = job.vids[i]
-              let ok = false
+              logger.log(v.title, `start ${v.url}`)
+              let res: 'ok' | 'fail' | 'skip' = 'fail'
               for (let attempt = 1; attempt <= flags.retries; attempt++) {
-                ok = await downloadOne(browser, v, flags, job.outDir)
-                if (ok) break
-                if (attempt < flags.retries) console.log(`  retry ${attempt}/${flags.retries}: ${v.title}`)
+                res = await downloadOne(browser, v, flags, job.outDir, logger, mp, rows, failedUrls)
+                if (res !== 'fail') break
+                if (attempt < flags.retries) {
+                  logger.key(v.title, `retry ${attempt}/${flags.retries} — tải lại từ segment đã có (resume)`)
+                }
               }
-              total++
-              if (ok) done++
-              else failed++
             }
           } finally {
             await browser.close().catch(() => {})
           }
         })()),
       )
+      // file fail để chạy lại: pornavhd --batch pornavhd-failed.txt
+      if (failedUrls.length) {
+        const ffail = join(job.outDir, 'pornavhd-failed.txt')
+        appendFileSync(ffail, [...new Set(failedUrls)].join('\n') + '\n')
+        console.log(`\n${new Set(failedUrls).size} video lỗi → ghi vào ${ffail} (chạy lại: pornavhd --batch pornavhd-failed.txt)`)
+      }
+      // summary bảng
+      console.log('\n== TỔNG KẾT ==')
+      console.log('trạng thái  file                                     dung lượng  thời gian  ghi chú')
+      for (const r of rows) {
+        console.log(`${r.status.padEnd(10)} ${r.title.padEnd(40)} ${r.mb.padStart(9)} ${r.secs.padStart(8)}  ${r.note.slice(0, 60)}`)
+      }
+      const okN = rows.filter((r) => r.status === 'ok').length
+      const skipN = rows.filter((r) => r.status === 'skip').length
+      const failN = rows.filter((r) => r.status === 'fail').length
+      console.log(`\nXong: ${okN} ok, ${skipN} skip, ${failN} fail — log: ${flags.logFile || join(job.outDir, 'pornavhd.log')}`)
+      if (failN) return 1
     }
-    if (total) console.log(`\nXong: ${done}/${total} ok, ${failed} fail`)
-    return failed ? 1 : 0
+    return 0
   } finally {
     await listingBrowser.close().catch(() => {})
   }
