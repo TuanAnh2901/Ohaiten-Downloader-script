@@ -1,7 +1,6 @@
-// src/progress.ts — MultiProgress: MỌI thứ về stdout (bar + log cùng stream → layout không nát).
-// Slot tái dùng theo label: retry không nhảy hàng, không spam "[khởi động...]".
-// Bất biến: sau mỗi lần vẽ, cursor nằm dưới khối bar. erase(): lên rowCount dòng rồi clear từng dòng.
-// Zero-dep, pattern AnimehayCLI nhưng log đi qua đây luôn.
+// src/progress.ts — MultiProgress kiểu KHÔNG-ANSI: MỘT dòng trạng thái duy nhất ở đáy màn hình,
+// chỉ dùng `\r` + đè spaces (console nào cũng chạy, kể cả conhost không hỗ trợ cursor-up ANSI).
+// Log in đè lên dòng đó xong vẽ lại. Zero-dep.
 
 export function formatBytes(n: number): string {
   if (n < 0) return '?'
@@ -26,9 +25,18 @@ export function formatEta(sec: number): string {
   return h ? `${h}:${p(m)}:${p(s)}` : `${p(m)}:${p(s)}`
 }
 
-const BAR_W = 30
+/** 1 mini-slot: `a.mp4 45.2% 85/188 1.2MB/s 01:23` hoặc `a.mp4 khởi động...` */
+export function slotFragment(s: { label: string; done: number; total: number; bytes: number; t0: number; started: boolean }): string {
+  if (!s.started) return `${s.label.slice(0, 18)} khởi động...`
+  const el = (Date.now() - s.t0) / 1000
+  const pct = s.total ? ((s.done * 100) / s.total).toFixed(1) : '0'
+  const speed = el > 1 ? formatSpeed(s.bytes / el) : '?'
+  const eta = s.total && s.done > 0 && el > 1 ? formatEta(((s.total - s.done) / s.done) * el) : '?'
+  return `${s.label.slice(0, 18)} ${pct}% ${s.done}/${s.total} ${speed} ${eta}`
+}
 
-/** 1 hàng bar: `[label] [████░░░] 45.2% 120/163 18.5MB/s ETA 01:23` */
+/** [legacy] 1 hàng bar đầy đủ (không dùng trong UI mới nhưng giữ cho test/compat) */
+const BAR_W = 30
 export function barLine(label: string, done: number, total: number, bytes: number, elapsedSec: number): string {
   const pct = total ? (done * 100) / total : 0
   const filled = Math.round((Math.min(100, pct) / 100) * BAR_W)
@@ -60,27 +68,26 @@ export interface FinishInfo {
 
 export class MultiProgress {
   private slots: SlotState[] = []
-  private started = false
   private lastPaint = 0
-  private rowCount = 0
+  private curLen = 0
 
-  /** cùng label + slot đã xong → tái dùng (retry); chưa → hàng mới */
+  /** cùng label + slot đã xong → tái dùng (retry); chưa → tạo slot mới */
   createSlot(label: string): SlotState {
     const free = this.slots.find((s) => s.label === label && s.held)
     if (free) {
       free.started = false
       free.done = free.total = free.bytes = 0
       free.held = false
-      this.render()
+      this.writeStatus()
       return free
     }
     const s: SlotState = { label, done: 0, total: 0, bytes: 0, t0: 0, started: false, held: false }
     this.slots.push(s)
-    this.render()
+    this.writeStatus()
     return s
   }
 
-  /** cập nhật số segment/bytes; throttled ~100ms */
+  /** cập nhật số segment/bytes; throttled ~250ms */
   update(s: SlotState, done: number, total: number, bytes: number): void {
     if (!s.started) {
       s.started = true
@@ -90,46 +97,50 @@ export class MultiProgress {
     s.total = total
     s.bytes = bytes
     const now = Date.now()
-    if (now - this.lastPaint >= 100) {
+    if (now - this.lastPaint >= 250) {
       this.lastPaint = now
-      this.erase()
-      this.render()
+      this.writeStatus()
     }
   }
 
-  /** in 1 dòng log: xóa khối bar → in log → vẽ lại bar dưới nó */
+  /** in 1 dòng log: đè spaces lên dòng trạng thái → in log → vẽ lại trạng thái */
   log(line: string): void {
-    this.erase()
-    process.stdout.write(`\r\x1b[K${line}\n`)
-    this.render()
+    this.clearStatus()
+    process.stdout.write(`\r${line}\n`)
+    this.writeStatus()
   }
 
-  /** slot xong → in dòng kết luận bền, slot giữ lại (held) để retry tái dùng */
+  /** slot xong → in dòng kết luận bền; slot giữ lại để retry tái dùng */
   finish(s: SlotState, info: FinishInfo): void {
-    this.erase()
+    this.clearStatus()
     const tag = info.end === 'ok' ? '[ok]  ' : info.end === 'skip' ? '[skip]' : '[FAIL]'
     const time = info.secs ? ` ${info.secs}s` : ''
     const size = info.mb ? ` ${info.mb}` : ''
-    process.stdout.write(`\r\x1b[K${tag} ${s.label}${size}${time} ${info.msg}\n`)
+    process.stdout.write(`\r${tag} ${s.label}${size}${time} ${info.msg}\n`)
     s.held = true
-    this.render()
+    this.writeStatus()
   }
 
-  private erase(): void {
-    if (!this.started || !this.rowCount) return
-    process.stdout.write(`\x1b[${this.rowCount}A`)
-    for (let i = 0; i < this.rowCount; i++) process.stdout.write('\r\x1b[K\x1b[1B')
+  private statusLine(): string {
+    return this.slots.filter((s) => !s.held).map(slotFragment).join('  |  ')
   }
 
-  /** vẽ khối bar từ vị trí cursor hiện tại — chỉ các slot đang chạy (held không vẽ) */
-  private render(): void {
-    const lines = this.slots.filter((s) => !s.held).map((s) => {
-      if (!s.started) return `${s.label.slice(0, 22).padEnd(23)} [khởi động...]`
-      const el = (Date.now() - s.t0) / 1000
-      return barLine(s.label, s.done, s.total, s.bytes, el)
-    })
-    for (const l of lines) process.stdout.write(`\r\x1b[K${l}\n`)
-    this.started = true
-    this.rowCount = lines.length
+  private writeStatus(): void {
+    const line = this.statusLine()
+    if (!line) {
+      this.curLen = 0
+      return
+    }
+    // đè spaces để xóa đuôi cũ nếu dòng mới ngắn hơn
+    const pad = this.curLen > line.length ? ' '.repeat(this.curLen - line.length) : ''
+    process.stdout.write(`\r${line}${pad}`)
+    this.curLen = line.length
+  }
+
+  private clearStatus(): void {
+    if (this.curLen > 0) {
+      process.stdout.write(`\r${' '.repeat(this.curLen)}\r`)
+      this.curLen = 0
+    }
   }
 }
