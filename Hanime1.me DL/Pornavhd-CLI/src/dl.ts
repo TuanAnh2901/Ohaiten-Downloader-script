@@ -1,4 +1,4 @@
-// src/dl.ts — flow tải 1 video: browser chỉ để đọc window.links.hls2 (StreamHG/recordplay),
+﻿// src/dl.ts — flow tải 1 video: browser chỉ để đọc window.links.hls2 (StreamHG/recordplay),
 // toàn bộ segment tải NATIVE bằng Node fetch pool (mặc định 64 luồng) → ffmpeg remux.
 import { execFileSync } from 'node:child_process'
 import { closeSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs'
@@ -278,6 +278,11 @@ export async function downloadVideo(
   return downloadFromMaster(links2, destPath, opts, 'hls2', undefined)
 }
 
+/** Mirror recordplay rỗng placeholder `_,,,,,.urlset` → bộ variant đầy `_,l,n,h,` (chuẩn của họ) */
+export function fixMirrorUrl(u: string): string {
+  return u.replace(/_[,]+(?=\.urlset)/, '_,l,n,h,')
+}
+
 /** Chuỗi tải 1 master m3u8: chọn variant (cao nhất ≤ res) → tải → ghép → verify.
  *  Biện pháp: variant lỗi → rơi chất lượng thấp hơn còn sống; hết variant → fail (giữ tmp để resume). */
 async function downloadFromMaster(
@@ -347,22 +352,28 @@ async function downloadFromMaster(
  *  mỗi segment = 58-62 byte PNG shell + TS thật nối sau IEND. Cả chuỗi fetch được native:
  *  /e|/embed/<code> → links.hls4 (recordplay/playrecord /stream/) → master → variant → index → tiktok PNG. */
 async function downloadNative(embedUrl: string, destPath: string, opts: DlOpts): Promise<boolean> {
-  const res = await resolveLinks(embedUrl, opts.log || (() => {}))
-  if (!res) return false
-  const { links, base } = res
-  const hls4 = links.hls4
-  if (hls4) {
-    const hls4Abs = hls4.startsWith('http') ? hls4 : `${base}${hls4}`
-    const ok = await downloadFromMaster(hls4Abs, destPath, opts, 'hls4', stripPngPayload)
-    if (ok) return true
-    opts.log?.('  ! hls4 chết → thử đường hls2 (fallback)')
-    opts.fileLog?.('hls4 fail → biện pháp: thử hls2')
+  const log = opts.log || (() => {})
+  const fileLog = opts.fileLog || (() => {})
+  // chuỗi nguồn: hls4 (segment "PNG" tiktok → strip shell) → hls3 (mirror .txt, TS thật đuôi .woff2) → hls2
+  const sources: { key: 'hls4' | 'hls3' | 'hls2'; label: string; transform?: (b: Buffer) => Buffer }[] = [
+    { key: 'hls4', label: 'hls4', transform: stripPngPayload },
+    { key: 'hls3', label: 'hls3' },
+    { key: 'hls2', label: 'hls2' },
+  ]
+  for (const s of sources) {
+    // mirror host xoay vòng mỗi lần fetch /e/ — thử 2 lần, lần 2 refetch lấy host sống mới
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await resolveLinks(embedUrl, log)
+      if (!res || !res.links[s.key]) break // nguồn không tồn tại với video này → nguồn kế
+      const raw = res.links[s.key]!
+      const fixed = raw.startsWith('http') ? raw : res.base + raw
+      if (await downloadFromMaster(fixMirrorUrl(fixed), destPath, opts, s.label, s.transform)) return true
+      log(`  ! ${s.label} ${attempt ? '(host xoay mới)' : ''} vẫn chết`)
+      fileLog(`${s.label} attempt ${attempt + 1} fail → ${attempt ? 'sang nguồn kế' : 'refetch /e/ lấy host mới'}`)
+    }
   }
-  if (!links.hls2) {
-    opts.fileLog?.('không còn đường nào (hls4 + hls2 đều thiếu/chết)')
-    return false
-  }
-  return downloadFromMaster(links.hls2, destPath, opts, 'hls2', undefined)
+  fileLog('hết đường: cả hls4/hls3/hls2 đều chết')
+  return false
 }
 
 export { vidUrlJoin }
