@@ -215,6 +215,8 @@ export async function resolveLinks(embedUrl: string, log: (s: string) => void): 
     const unpacked = unpackPacked(html)
     const links = unpacked && extractLinks(unpacked)
     if (links) {
+
+      harvestMirrorDomains(links)
       const base = new URL(embedUrl).origin
       return { links, base }
     }
@@ -224,6 +226,31 @@ export async function resolveLinks(embedUrl: string, log: (s: string) => void): 
     log(`  ! resolveLinks: ${String(e.message).slice(0, 120)}`)
     return null
   }
+}
+
+/** Pool domain mirror recordplay: 1 file id phục vụ được qua nhiều domain thay nhau.
+ *  Một số domain bị CF chặn bot (403 Website Access Blocked) — swap sang domain cùng family là thông. */
+const MIRROR_DOMAINS: string[] = ['modernfitnessguru.cyou']
+
+function harvestMirrorDomains(links: { hls2?: string; hls3?: string }) {
+  for (const u of [links.hls3, links.hls2]) {
+    try {
+      if (!u?.startsWith('http')) continue
+      const host = new URL(u).hostname
+      const labels = host.split('.')
+      if (labels.length < 3 || /[0-9a-f]{8,}/.test(host) || host.includes('centaurus') || host.includes('tiktokcdn')) continue
+      const d = labels.slice(1).join('.')
+      if (!MIRROR_DOMAINS.includes(d) && MIRROR_DOMAINS.length < 8) MIRROR_DOMAINS.push(d)
+    } catch { /* ignore */ }
+  }
+}
+
+function swapMirrorDomain(u: string, domain: string): string {
+  const m = u.match(/^(https:\/\/)([^/]+)/)
+  if (!m) return u
+  const labels = m[2].split('.')
+  if (labels.length < 3) return u
+  return u.replace(m[2], labels[0] + '.' + domain)
 }
 
 /** Bait recordplay: segment "PNG" 1×1 của tiktokcdn — fragment TS thật nối SAU IEND chunk (58-62 byte đầu là PNG shell) */
@@ -297,19 +324,32 @@ async function downloadFromMaster(
   const streams = Math.max(1, opts.streams ?? 64)
   let master = ''
   let masterErr = ''
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      master = await fetchText(masterUrl)
-      masterErr = ''
-      break
-    } catch (e: any) {
-      masterErr = String(e.message)
-      if (attempt < 2) await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)))
+  // nguyên bản trước, hết thì swap sang domain mirror khác trong pool (chỉ hls3/hls2 — hls4 là host riêng)
+  const candidates = [masterUrl]
+  if (sourceLabel !== 'hls4') {
+    for (const d of MIRROR_DOMAINS) {
+      const s = swapMirrorDomain(masterUrl, d)
+      if (s !== masterUrl && !candidates.includes(s)) candidates.push(s)
+    }
+  }
+  outer: for (const cu of candidates) {
+    const tries = cu === candidates[0] ? 2 : 1
+    for (let attempt = 0; attempt < tries; attempt++) {
+      try {
+        master = await fetchText(cu)
+        masterErr = ''
+        masterUrl = cu
+        fileLog(`master OK qua ${cu}`)
+        break outer
+      } catch (e: any) {
+        masterErr = String(e.message)
+        if (attempt < tries - 1) await new Promise((r) => setTimeout(r, 2000))
+      }
     }
   }
   if (masterErr) {
     log(`  ! ${sourceLabel} master: ${masterErr.slice(0, 140)}`)
-    fileLog(`${sourceLabel} master fail (3 lần thử): ${masterErr}`)
+    fileLog(`${sourceLabel} master fail (tất cả candidate domain): ${masterErr}`)
     return false
   }
   let variants = parseMaster(master, masterUrl)
