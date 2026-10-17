@@ -2,7 +2,7 @@
 const test = require('node:test')
 const assert = require('node:assert')
 process.chdir(require('node:path').join(__dirname, '..'))
-const { parseMaster, chooseVariant, parseVariant } = require('../dist/index.cjs')
+const { parseMaster, chooseVariant, parseVariant, stripPngPayload } = require('../dist/index.cjs')
 
 const MASTER = `#EXTM3U
 #EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=273690,RESOLUTION=268x480,CODECS="avc1.640015,mp4a.40.2"
@@ -47,4 +47,22 @@ seg-2-f2-v1-a1.ts?t=TOK&s=1
   const r2 = parseVariant(MP4, 'https://h/a.m3u8')
   assert.strictEqual(r2.init, 'https://h/init.mp4')
   assert.deepStrictEqual(r2.segs, ['https://h/i.m4s'])
+})
+
+// bait recordplay "PNG" 1x1: TS thật nối sau IEND chunk
+test('stripPngPayload: bỏ PNG shell giữ TS sau IEND; buffer thường giữ nguyên', () => {
+  const ts = Buffer.from('474000010003b0d0001c100000001efab33c1', 'hex')
+  const shell = Buffer.concat([
+    Buffer.from('0000000d4948445235000000000000000d000000d', 'hex'), // (giả - padding)
+    Buffer.from('000000004945', 'hex').subarray(0, 0),                  // no-op
+    Buffer.from('89504e470d0a1a0a', 'hex'),                             // PNG sig
+    Buffer.from('0000000d49484452', 'hex'),
+    Buffer.alloc(13),
+    Buffer.from('0000000049454e44', 'hex'),                             // IEND type
+    Buffer.from('ae426082', 'hex'),                                     // IEND CRC
+    ts,
+  ])
+  const out = stripPngPayload(shell)
+  assert.ok(out.equals(ts))
+  assert.ok(stripPngPayload(ts).equals(ts)) // không phải PNG → nguyên bản
 })

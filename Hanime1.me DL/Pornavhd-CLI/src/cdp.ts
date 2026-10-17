@@ -245,7 +245,9 @@ export class Browser {
             '--no-first-run',
             '--no-startup-window', // daemon: process sống mà không mở trang khởi-start (đóng nó = Edge exit -> 1006)
             '--mute-audio',
+            '--autoplay-policy=no-user-gesture-required',
             '--window-size=1100,800',
+            '--window-position=-2400,-2400', // offscreen: "background running" — showWindow() đưa lên khi cần click CF
             '--disable-blink-features=AutomationControlled',
           ],
           { stdio: ['ignore', 'ignore', 'pipe'] },
@@ -326,6 +328,20 @@ export class Browser {
     await new Promise((r) => setTimeout(r, 500))
     try {
       this.proc.kill()
+    } catch {}
+  }
+
+  /** ẩn/hiện cửa sổ browser (offscreen mặc định; hiện khi cần người dùng click CF) */
+  async showWindow(on: boolean): Promise<void> {
+    try {
+      const { windowId } = (await this.cdp.send('Browser.getWindowForTarget', {})) as any
+      if (!windowId) return
+      await this.cdp.send('Browser.setWindowBounds', {
+        windowId,
+        bounds: on
+          ? { windowState: 'normal', left: 80, top: 60, width: 1100, height: 800 }
+          : { windowState: 'normal', left: -2400, top: -2400, width: 1100, height: 800 },
+      })
     } catch {}
   }
 }

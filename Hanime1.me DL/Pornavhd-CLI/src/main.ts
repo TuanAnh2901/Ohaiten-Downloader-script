@@ -10,7 +10,7 @@ export { parseCards, sanitize, buildPageUrl, isCfChallenge, crawl } from './list
 export type { Vid } from './listing'
 export { decodeBody, Browser, Page } from './cdp'
 export type { CdpResponse } from './cdp'
-export { parseVariant, parseMaster, chooseVariant, isAdHost, isPlaylist, downloadVideo } from './dl'
+export { parseVariant, parseMaster, chooseVariant, isAdHost, isPlaylist, downloadVideo, unpackPacked, extractLinks, resolveLinks, stripPngPayload } from './dl'
 export { vidUrlJoin } from './urljoin'
 export { runCli } from './run'
 
