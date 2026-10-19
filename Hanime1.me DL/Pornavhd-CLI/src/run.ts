@@ -1,7 +1,7 @@
 // src/run.ts — runCli: listing browser + download worker pool (event loop)
 import { mkdirSync, appendFileSync, readFileSync } from 'node:fs'
-import { statSync } from 'node:fs'
-import { join } from 'node:path'
+import { statSync, unlinkSync, rmSync } from 'node:fs'
+import { join, dirname } from 'node:path'
 import { parseArgs, buildJobs, Flags } from './args'
 import { crawl, parseCards, isCfChallenge, Vid, sanitize } from './listing'
 import { Browser, Page } from './cdp'
@@ -40,7 +40,9 @@ interface Row {
   title: string
   status: string
   mb: string
+  mbn: number
   secs: string
+  secn: number
   note: string
 }
 
@@ -62,7 +64,7 @@ async function downloadOne(
     mp.finish(slot, { end: endKind, msg, mb, secs })
     rowKind = endKind
     const old = rows.findIndex((r) => r.title === fname)
-    const row: Row = { title: fname, status: endKind, mb: mb ? `${mb}MB` : '', secs: secs ? `${secs}s` : '', note }
+    const row: Row = { title: fname, status: endKind, mb: mb ? `${mb}MB` : '', mbn: mb, secs: secs ? `${secs}s` : '', secn: secs, note }
     if (old >= 0) rows[old] = row
     else rows.push(row)
     logger.log(fname, `${endKind.toUpperCase()} ${msg}${note ? ' | ' + note : ''}`)
@@ -72,7 +74,7 @@ async function downloadOne(
     if (flags.redo) {
       // --redo: xoá file + .tmp variant cũ để tải lại thật (file-exist check không nuốt --redo)
       await unlinkAny(dest)
-      await (import('node:fs')).then((f) => f.rmSync(`${dirname(dest)}/.tmp-${sanitize(v.title)}`, { recursive: true, force: true }))
+      rmSync(`${dirname(dest)}/.tmp-${sanitize(v.title)}`, { recursive: true, force: true })
     } else {
       end('skip', 'đã có file')
       return rowKind
@@ -98,6 +100,7 @@ async function downloadOne(
       fileLog,
       streams: flags.streams,
       onProgress: (done, total, bytes) => mp.update(slot, done, total, bytes),
+      onPhase: (p) => mp.phase(slot, p),
     })
     if (ok) {
       const secs = Math.round((Date.now() - t0) / 1000)
@@ -138,10 +141,9 @@ function readArchive(arch: string): Set<string> {
 }
 
 async function unlinkAny(p: string) {
-  await stat(p).then(
-    () => (import('node:fs')).then((f) => f.unlinkSync(p)),
-    () => {},
-  ).catch(() => {})
+  try {
+    if (statSync(p)) unlinkSync(p)
+  } catch {}
 }
 
 export async function runCli(argv: string[]): Promise<number> {
@@ -161,19 +163,23 @@ export async function runCli(argv: string[]): Promise<number> {
       for (const job of jobs) {
         for (const v of job.vids) {
           n++
-          console.log(`${String(n).padStart(4)}. [${v.duration.padStart(7)}] ${v.title}  ${v.url}`)
+          console.log(`${String(n).padStart(4)}. ${v.duration.padStart(9)}  ${v.title.slice(0, 70).padEnd(70)}  ${v.url}`)
         }
       }
+      console.log(`\n${n} video`)
       return 0
     }
+    console.log(`pornavhd ▸ ${flags.target} | jobs=${flags.jobs} streams=${flags.streams} res=${flags.res || 'max'}`)
+    if (jobs.length === 1 && jobs[0].vids.length) console.log(`          ▸ ${jobs[0].vids.length} video → ${jobs[0].outDir}${flags.logFile ? ` | log: ${flags.logFile}` : ''}`)
     const mp = new MultiProgress()
     const rows: Row[] = []
     const failedUrls: string[] = []
+    const jobT0 = Date.now()
     for (const job of jobs) {
       mkdirSync(job.outDir, { recursive: true })
       const logger = new Logger(flags.logFile ? flags.logFile : join(job.outDir, 'pornavhd.log'))
       logger.consoleOut = (l) => mp.log(l)
-      logger.log('run', `=== bắt đầu: ${flags.target} | jobs=${flags.jobs} streams=${flags.streams} res=${flags.res || 'max'} ===`)
+      logger.log('run', `pornavhd ▸ ${flags.target} | jobs=${flags.jobs} streams=${flags.streams} res=${flags.res || 'max'}`)
       const idx = { i: 0 }
       const workers = Math.max(1, Math.min(flags.jobs, job.vids.length))
       // listing browser không dùng cho download → mỗi worker một browser riêng (profile -wN)
@@ -218,14 +224,17 @@ export async function runCli(argv: string[]): Promise<number> {
       }
       // summary bảng
       console.log('\n== TỔNG KẾT ==')
-      console.log('trạng thái  file                                     dung lượng  thời gian  ghi chú')
+      console.log('trạng thái  file                                     dung lượng  thời gian      tốc độ   ghi chú')
       for (const r of rows) {
-        console.log(`${r.status.padEnd(10)} ${r.title.padEnd(40)} ${r.mb.padStart(9)} ${r.secs.padStart(8)}  ${r.note.slice(0, 60)}`)
+        const sp = r.secn && r.mbn ? `${(r.mbn / r.secn).toFixed(1)}MB/s` : ''
+        console.log(`${r.status.padEnd(10)} ${r.title.padEnd(40)} ${r.mb.padStart(9)} ${r.secs.padStart(8)} ${sp.padStart(10)}  ${r.note.slice(0, 60)}`)
       }
       const okN = rows.filter((r) => r.status === 'ok').length
       const skipN = rows.filter((r) => r.status === 'skip').length
       const failN = rows.filter((r) => r.status === 'fail').length
-      console.log(`\nXong: ${okN} ok, ${skipN} skip, ${failN} fail — log: ${flags.logFile || join(job.outDir, 'pornavhd.log')}`)
+      const ttlMb = rows.filter((r) => r.status === 'ok').reduce((a, r) => a + r.mbn, 0)
+      const durS = Math.max(1, Math.round((Date.now() - jobT0) / 1000))
+      console.log(`Xong: ${okN} ok, ${skipN} skip, ${failN} fail | ${Math.round(ttlMb)}MB trong ${durS}s${okN ? ` (${(ttlMb / durS).toFixed(1)}MB/s)` : ''} — log: ${flags.logFile || join(job.outDir, 'pornavhd.log')}`)
       if (failN) return 1
     }
     return 0

@@ -181,6 +181,8 @@ export interface DlOpts {
   streams?: number
   /** progress: (done, total, bytes) — wired vào progress bar */
   onProgress?: (done: number, total: number, bytes: number) => void
+  /** phase của slot: 'master' | 'seg' | 'ghép' | 'kiểm tra' — status line hiển thị đang làm gì */
+  onPhase?: (p: string) => void
 }
 
 /** Giải Dean-Edwards packer: eval(function(p,a,c,k,e,d){...}('P',radix,count,'k|k|...'.split('|'))) */
@@ -300,6 +302,7 @@ export async function downloadVideo(
   const streams = Math.max(1, opts.streams ?? 64)
 
   // 1) navigate + chờ CF, chỉ cần LẤY embed recordplay/playrecord (code) từ HTML
+  opts.onPhase?.('trang')
   await page.goto(videoUrl, 45_000)
   let cfWarned = false
   let embedUrls: string[] = []
@@ -416,22 +419,34 @@ async function downloadFromMaster(
     return false
   }
   const t0 = Date.now()
+  opts.onPhase?.('master')
+  const tMs: number[] = []
   for (const v of variants) {
     log(`  $ ${v.w}x${v.h} (${sourceLabel}) ${streams} luồng`)
     fileLog(`${sourceLabel}: variant ${v.w}x${v.h} url=${v.url.slice(0, 160)}`)
     try {
+      tMs[0] = Date.now() // master race xong
       const indexText = await fetchText(v.url)
       const { segs, init } = parseVariant(indexText, v.url)
       if (!segs.length) throw new Error('index không có segment nào')
       const ordered = (init ? [init] : []).concat(segs)
       const tmpDir = tmpDirFor(destPath, v.h)
+      opts.onPhase?.('seg')
+      tMs[1] = Date.now() // variant index xong
       const paths = await pooledDownload(ordered, streams, tmpDir, opts.onProgress, transform)
+      opts.onPhase?.('ghép')
+      tMs[2] = Date.now() // segment pool xong
       ffmpegConcatFiles(paths, destPath)
+      opts.onPhase?.('kiểm tra')
+      tMs[3] = Date.now() // ffmpeg xong
       const vr = verifyVideo(destPath)
+      tMs[4] = Date.now() // verify xong
       if (!vr.ok) throw new Error(vr.why || 'verify fail')
       const secs = Math.round((Date.now() - t0) / 1000)
       log(`  $ ${vr.mb}MB / ${secs}s | ${ordered.length} segment | dài ${Math.round(vr.dur!)}s — OK`)
       fileLog(`${sourceLabel} ${v.h}p OK: ${vr.mb}MB ${secs}s dur=${Math.round(vr.dur!)}s segs=${ordered.length}`)
+      // số liệu sâu từng phase (s) — đo кабинет hiệu năng mỗi lần chạy
+      fileLog(`phases| master=${(tMs[0] - t0) / 1000} index=${(tMs[1] - tMs[0]) / 1000} seg=${(tMs[2] - tMs[1]) / 1000} ffmpeg=${(tMs[3] - tMs[2]) / 1000} verify=${(tMs[4] - tMs[3]) / 1000}`)
       rmSync(join(dirname(destPath), `.tmp-${basename(destPath).replace(/\.mp4$/, '')}`), { recursive: true, force: true })
       return true
     } catch (e: any) {

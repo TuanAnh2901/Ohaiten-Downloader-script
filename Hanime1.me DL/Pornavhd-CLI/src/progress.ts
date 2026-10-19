@@ -35,10 +35,32 @@ export function fitLabel(label: string, max: number): string {
 }
 
 /** 1 mini-slot gọn trong `max` ký tự — rút dần: số segment → tốc độ → ETA, label giữ đầu+đuôi.
- *  Format đầy đủ: `a.mp4 45.2% 85/188 1.2MB/s 01:23`; đang khởi động: `a.mp4 khởi động...` */
-export function slotFragment(s: { label: string; done: number; total: number; bytes: number; t0: number; started: boolean }, max = 40, idx = -1): string {
+ *  Slot rộng (≥60 cột, dạng 1 video): thanh ASCII `[████░░░░]` — nhìn nhanh hơn số %.
+ *  Đang seg: `a.mp4 [████░░] 85/188 1.2MB/s 01:23`; phase khác: `a.mp4 ghép…`; khởi động: `a.mp4 khởi động...` */
+export function slotFragment(s0: { label: string; done: number; total: number; bytes: number; t0: number; started: boolean; phase?: string }, max = 40, idx = -1): string {
   const pre = idx >= 0 && max > 12 ? `#${idx + 1} ` : ''
+  // dạng rộng: thanh + count + speed + eta (không % — thanh chính là %)
+  const s = s0
+  if (max >= 60 && s.started && (!s.phase || s.phase === 'seg')) {
+    const cnt = `${s.done}/${s.total}`
+    const el = (Date.now() - s.t0) / 1000
+    const speed = el > 1 ? formatSpeed(s.bytes / el) : '?'
+    const eta = s.total && s.done > 0 && el > 1 ? formatEta(((s.total - s.done) / s.done) * el) : '?'
+    const rest = ` ${cnt} ${speed} ${eta}`.length
+    const BW = Math.min(24, Math.max(8, max - 4 - rest))
+    const lab = fitLabel(s0.label, Math.max(6, max - BW - rest - 5))
+    const filled = s.total ? Math.round((Math.min(1, s.done / s.total)) * BW) : 0
+    const bar = '█'.repeat(filled) + '░'.repeat(BW - filled)
+    const full = `${pre}${lab}  [${bar}] ${cnt} ${speed} ${eta}`
+    return full.length <= max ? full : compactFragment(s0, max, idx, pre)
+  }
+  return compactFragment(s0, max, idx, pre)
+}
+
+/** dạng hẹp/sapo: rút dần % → speed → eta như cũ */
+function compactFragment(s: { label: string; done: number; total: number; bytes: number; t0: number; started: boolean; phase?: string }, max: number, idx: number, pre: string): string {
   const lab = fitLabel(s.label, Math.max(6, max - 20 - pre.length))
+  if (s.phase && s.phase !== 'seg') return fitLabel(`${pre}${lab} ${s.phase}…`, max)
   if (!s.started) return fitLabel(`${pre}${lab} khởi động...`, max)
   const el = (Date.now() - s.t0) / 1000
   const pct = s.total ? ((s.done * 100) / s.total).toFixed(1) : '0'
@@ -75,6 +97,7 @@ export interface SlotState {
   t0: number
   started: boolean
   held: boolean // kết luận đã in — slot rảnh, retry cùng label chiếm lại
+  phase: string // '' | 'trang' | 'master' | 'seg' | 'ghép' | 'kiểm tra'
 }
 
 export interface FinishInfo {
@@ -88,6 +111,9 @@ export class MultiProgress {
   private slots: SlotState[] = []
   private lastPaint = 0
   private curLen = 0
+  private lastLine = ''
+  /** số lần vẽ lại dòng status (đo nhiễu stdout) */
+  paints = 0
 
   /** cùng label + slot đã xong → tái dùng (retry); chưa → tạo slot mới */
   createSlot(label: string): SlotState {
@@ -96,13 +122,21 @@ export class MultiProgress {
       free.started = false
       free.done = free.total = free.bytes = 0
       free.held = false
+      free.phase = ''
       this.writeStatus()
       return free
     }
-    const s: SlotState = { label, done: 0, total: 0, bytes: 0, t0: 0, started: false, held: false }
+    const s: SlotState = { label, done: 0, total: 0, bytes: 0, t0: 0, started: false, held: false, phase: '' }
     this.slots.push(s)
     this.writeStatus()
     return s
+  }
+
+  /** đổi phase của slot (trang/master/seg/ghép/kiểm tra) — vẽ ngay nếu text khác */
+  phase(s: SlotState, p: string): void {
+    if (s.phase === p) return
+    s.phase = p
+    this.writeStatus()
   }
 
   /** cập nhật số segment/bytes; throttled ~250ms */
@@ -154,10 +188,13 @@ export class MultiProgress {
 
   private writeStatus(): void {
     const line = this.statusLine()
+    if (line === this.lastLine) return // không vẽ lại text giống hệt — giảm nhiễu stdout
+    this.lastLine = line
     if (!line) {
-      this.curLen = 0
+      this.clearStatus()
       return
     }
+    this.paints++
     // đè spaces để xóa đuôi cũ nếu dòng mới ngắn hơn
     const pad = this.curLen > line.length ? ' '.repeat(this.curLen - line.length) : ''
     process.stdout.write(`\r${line}${pad}`)
@@ -169,5 +206,6 @@ export class MultiProgress {
       process.stdout.write(`\r${' '.repeat(this.curLen)}\r`)
       this.curLen = 0
     }
+    this.lastLine = ''
   }
 }
