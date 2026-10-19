@@ -1,4 +1,4 @@
-// build-sea.mjs — Node SEA: blob -> copy node.exe -> postject inject -> pornavhd.exe
+// build-sea.mjs — Node SEA: blob -> copy node.exe -> postject inject -> Pnavhd.exe
 // Port tư tưởng từ AnimehayCLI/build-sea.mjs (1:1), Node >=22 (global WebSocket).
 import { execSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, rmSync } from 'node:fs'
@@ -6,7 +6,7 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const outExe = resolve(__dirname, process.env.SEA_OUT || 'pornavhd.exe')
+const outExe = resolve(__dirname, process.env.SEA_OUT || 'Pnavhd.exe')
 
 console.log('[SEA] Step 0: check Node >=22 (global WebSocket CDP client cần >=22)...')
 const mm = process.version.match(/^v(\d+)\./)
@@ -43,7 +43,7 @@ if (!nodeExe) {
 }
 console.log(`[SEA] node tại: ${nodeExe}`)
 
-console.log('[SEA] Step 4: copy node.exe -> pornavhd.exe...')
+console.log('[SEA] Step 4: copy node.exe -> Pnavhd.exe...')
 rmSync(outExe, { force: true })
 copyFileSync(nodeExe, outExe)
 
@@ -54,4 +54,4 @@ execSync(
 )
 console.log('[SEA] Done!')
 console.log(`[SEA] -> ${outExe}`)
-console.log('[SEA] Run: pornavhd.exe --help')
+console.log('[SEA] Run: Pnavhd.exe --help')

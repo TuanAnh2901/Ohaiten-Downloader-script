@@ -1,7 +1,10 @@
 dist/
 node_modules/
 downloads/
-.pw-profile/
-.pw-profile-w*/
-pornavhd.exe
+pw-profile*/
+.pw-profile*
+.omo/
+pornavhd.com/
 *.blob
+pornavhd*.exe
+Pnavhd*.exe

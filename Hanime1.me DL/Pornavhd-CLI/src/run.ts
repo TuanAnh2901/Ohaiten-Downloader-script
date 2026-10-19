@@ -81,6 +81,7 @@ async function downloadOne(
     }
   }
   // archive chống tải lại
+  // tên archive giữ nguyên ".pornavhd-archive" — đổi tên = mất memory "đã tải xong" ở các folder cũ
   const arch = join(outDir, '.pornavhd-archive')
   const seen = readArchive(arch)
   if (seen.has(v.url) && !flags.redo) {
@@ -169,7 +170,7 @@ export async function runCli(argv: string[]): Promise<number> {
       console.log(`\n${n} video`)
       return 0
     }
-    console.log(`pornavhd ▸ ${flags.target} | jobs=${flags.jobs} streams=${flags.streams} res=${flags.res || 'max'}`)
+    console.log(`Pnavhd ▸ ${flags.target} | jobs=${flags.jobs} streams=${flags.streams} res=${flags.res || 'max'}`)
     if (jobs.length === 1 && jobs[0].vids.length) console.log(`          ▸ ${jobs[0].vids.length} video → ${jobs[0].outDir}${flags.logFile ? ` | log: ${flags.logFile}` : ''}`)
     const mp = new MultiProgress()
     const rows: Row[] = []
@@ -177,9 +178,9 @@ export async function runCli(argv: string[]): Promise<number> {
     const jobT0 = Date.now()
     for (const job of jobs) {
       mkdirSync(job.outDir, { recursive: true })
-      const logger = new Logger(flags.logFile ? flags.logFile : join(job.outDir, 'pornavhd.log'))
+      const logger = new Logger(flags.logFile ? flags.logFile : join(job.outDir, 'Pnavhd.log'))
       logger.consoleOut = (l) => mp.log(l)
-      logger.log('run', `pornavhd ▸ ${flags.target} | jobs=${flags.jobs} streams=${flags.streams} res=${flags.res || 'max'}`)
+      logger.log('run', `Pnavhd ▸ ${flags.target} | jobs=${flags.jobs} streams=${flags.streams} res=${flags.res || 'max'}`)
       const idx = { i: 0 }
       const workers = Math.max(1, Math.min(flags.jobs, job.vids.length))
       // listing browser không dùng cho download → mỗi worker một browser riêng (profile -wN)
@@ -212,15 +213,15 @@ export async function runCli(argv: string[]): Promise<number> {
           }
         })()),
       )
-      // file fail để chạy lại: pornavhd --batch pornavhd-failed.txt
+      // file fail để chạy lại: Pnavhd --batch Pnavhd-failed.txt
       if (failedUrls.length) {
-        const ffail = join(job.outDir, 'pornavhd-failed.txt')
+        const ffail = join(job.outDir, 'Pnavhd-failed.txt')
         // merge với nội dung cũ → không dồn chồng sau mỗi run; URL story mới dòng trước
         let prev: string[] = []
         try { prev = readFileSync(ffail, 'utf8').split(/\r?\n/).filter((u) => u.startsWith('http')) } catch {}
         const failSet = new Set([...failedUrls, ...prev])
         appendFileSync(ffail, [...failSet].join('\n') + '\n')
-        console.log(`\n${failSet.size} video lỗi → ghi vào ${ffail} (chạy lại: pornavhd --batch pornavhd-failed.txt)`)
+        console.log(`\n${failSet.size} video lỗi → ghi vào ${ffail} (chạy lại: Pnavhd --batch Pnavhd-failed.txt)`)
       }
       // summary bảng
       console.log('\n== TỔNG KẾT ==')
@@ -234,7 +235,7 @@ export async function runCli(argv: string[]): Promise<number> {
       const failN = rows.filter((r) => r.status === 'fail').length
       const ttlMb = rows.filter((r) => r.status === 'ok').reduce((a, r) => a + r.mbn, 0)
       const durS = Math.max(1, Math.round((Date.now() - jobT0) / 1000))
-      console.log(`Xong: ${okN} ok, ${skipN} skip, ${failN} fail | ${Math.round(ttlMb)}MB trong ${durS}s${okN ? ` (${(ttlMb / durS).toFixed(1)}MB/s)` : ''} — log: ${flags.logFile || join(job.outDir, 'pornavhd.log')}`)
+      console.log(`Xong: ${okN} ok, ${skipN} skip, ${failN} fail | ${Math.round(ttlMb)}MB trong ${durS}s${okN ? ` (${(ttlMb / durS).toFixed(1)}MB/s)` : ''} — log: ${flags.logFile || join(job.outDir, 'Pnavhd.log')}`)
       if (failN) return 1
     }
     return 0

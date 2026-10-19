@@ -10,7 +10,7 @@ export interface Flags {
   retries: number
   /** số luồng song song tải segment mỗi video (mặc định 96) */
   streams: number
-  /** path file log (default <output-dir>/pornavhd.log) */
+  /** path file log (default <output-dir>/Pnavhd.log) */
   logFile?: string
   /** tải lại dù archive đã có */
   redo: boolean
@@ -126,7 +126,7 @@ export async function buildJobs(flags: Flags, fetchPage: (url: string) => Promis
 }
 
 function printHelp() {
-  console.log(`pornavhd.exe <URL video | /actor/<slug>/ | "?s=<tu-khoa>" | urls.txt --batch>
+  console.log(`Pnavhd.exe <URL video | /actor/<slug>/ | "?s=<tu-khoa>" | urls.txt --batch>
 
 flags:
   --batch        target là file .txt (1 URL/dòng, # comment)
@@ -138,7 +138,7 @@ flags:
   --to N         video kết thúc
   --retries N    retry mỗi video khi fail (default 2)
   --streams N    số luồng song song tải segment mỗi video (default 96)
-  --log-file P   path file log (default <output-dir>/pornavhd.log)
+  --log-file P   path file log (default <output-dir>/Pnavhd.log)
   --redo         tải lại dù archive đã ghi video này là tải xong
 
 yêu cầu: Edge/Chrome + ffmpeg trong PATH`)
