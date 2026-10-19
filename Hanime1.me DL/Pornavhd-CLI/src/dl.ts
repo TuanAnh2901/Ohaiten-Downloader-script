@@ -52,12 +52,13 @@ export function parseMaster(text: string, baseUrl: string): HlsVariant[] {
   return out
 }
 
-/** chọn variant theo --res: cao nhất ≤ res;若无 variant hợp → thấp nhất còn lại */
+/** chọn variant theo --res: cao nhất ≤ res (tie: chọn width lớn hơn);无 hợp → nhỏ nhất */
 export function chooseVariant(vs: HlsVariant[], res?: number): HlsVariant | null {
   if (!vs.length) return null
+  const better = (a: HlsVariant, b: HlsVariant) => (b.h > a.h || (b.h === a.h && b.w > a.w) ? b : a)
   const ok = vs.filter((v) => !res || v.h <= res)
   if (!ok.length) return vs.reduce((a, b) => (b.h < a.h ? b : a))
-  return ok.reduce((a, b) => (b.h > a.h ? b : a))
+  return ok.reduce(better)
 }
 
 /** Host mirror CF trả "Access Blocked" — quên cả run (retry lại chỉ tốn request, càng bị chặn chặt hơn) */
@@ -112,7 +113,7 @@ async function pooledDownload(
       const u = urls[k]
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          const r = await fetch(u, { headers: DL_HEADERS })
+          const r = await fetch(u, { headers: DL_HEADERS, signal: AbortSignal.timeout(60_000) })
           if (r.ok) {
             const raw = Buffer.from(await r.arrayBuffer())
             const b = transform ? transform(raw) : raw
@@ -226,8 +227,7 @@ export async function resolveLinks(embedUrl: string, log: (s: string) => void): 
     const unpacked = unpackPacked(html)
     const links = unpacked && extractLinks(unpacked)
     if (links) {
-
-      harvestMirrorDomains(links)
+      for (const d of harvestMirrorDomains(links)) if (!MIRROR_DOMAINS.includes(d)) MIRROR_DOMAINS.push(d)
       const base = new URL(embedUrl).origin
       return { links, base }
     }
@@ -241,19 +241,25 @@ export async function resolveLinks(embedUrl: string, log: (s: string) => void): 
 
 /** Pool domain mirror recordplay: 1 file id phục vụ được qua nhiều domain thay nhau.
  *  Một số domain bị CF chặn bot (403 Website Access Blocked) — swap sang domain cùng family là thông. */
-const MIRROR_DOMAINS: string[] = ['modernfitnessguru.cyou']
+const MIRROR_DOMAINS: string[] = ['modernfitnessguru.cyou', 'cdn-centaurus.com', 'babycareproducts.shop']
 
-function harvestMirrorDomains(links: { hls2?: string; hls3?: string }) {
-  for (const u of [links.hls3, links.hls2]) {
+/** Pure: tiền tố subdomain per-code là hex 12 ký tự — bỏ filter hex cũ (đã từng khiến hàm này chết hoàn toàn).
+ *  Skip family dummy `dX-dX.com` (NXDOMAIN — quay liên tục từ /e/); domain = host trừ tiền tố.
+ *  Trả pool mới (cap 8) — orig pool giữ vị trí ưu tiên đầu. */
+export function harvestMirrorDomains(links: { hls2?: string; hls3?: string }, pool: string[] = MIRROR_DOMAINS): string[] {
+  const out = [...pool]
+  for (const ref of [links.hls3, links.hls2]) {
     try {
-      if (!u?.startsWith('http')) continue
-      const host = new URL(u).hostname
-      const labels = host.split('.')
-      if (labels.length < 3 || /[0-9a-f]{8,}/.test(host) || host.includes('centaurus') || host.includes('tiktokcdn')) continue
+      if (!ref?.startsWith('http') || ref.includes('tiktokcdn')) continue
+      const labels = new URL(ref).hostname.split('.')
+      if (labels.length < 3) continue
       const d = labels.slice(1).join('.')
-      if (!MIRROR_DOMAINS.includes(d) && MIRROR_DOMAINS.length < 8) MIRROR_DOMAINS.push(d)
+      // family dummy: subdomain chính dạng ab-cd (dp-do/ds-dr/do-dn...) — NXDOMAIN toàn cầu đã kiểm chứng
+      if (!d || /^[a-z]{2}-[a-z]{2}\./.test(d) || out.includes(d) || out.length >= 8) continue
+      out.push(d)
     } catch { /* ignore */ }
   }
+  return out
 }
 
 function swapMirrorDomain(u: string, domain: string): string {
@@ -370,11 +376,12 @@ async function downloadFromMaster(
   // RACE: dò song song toàn bộ candidate (thay vì tuần tự — DNS chết từng cái mất 2-4s → 2 phút tổng).
   // Chọn kết quả 200 OK Ưu tiên theo thứ tự; pass 2 chỉ thử các lỗi tạm thời (không phải 404), đã lọc ban.
   type RaceRes = { url: string; text?: string; err?: string }
+  let failLogged = 0
   const race = async (pool: string[]): Promise<RaceRes[]> =>
     Promise.all(pool.map(async (u): Promise<RaceRes> => {
       try { return { url: u, text: await fetchText(u) } } catch (e: any) {
         const err = String(e.cause?.code || e.cause?.message || e.message)
-        fileLog(`   ! candidate fail: ${err} :: ${u.slice(24, 110)}`)
+        if (failLogged++ < 6) fileLog(`   ! candidate fail: ${err} :: ${u.slice(24, 110)}`) // spam-guard: 6 dòng đầu, còn lại tổng cuối pass
         return { url: u, err }
       }
     }))
@@ -382,6 +389,8 @@ async function downloadFromMaster(
   let raceRes: RaceRes[] = []
   for (let pass = 0; pass < 2 && pool.length; pass++) {
     raceRes = await race(pool)
+    if (failLogged > 6) fileLog(`   ! (+${failLogged - 6} candidate fail nữa trong pass ${pass})`)
+    failLogged = 0
     const pick = raceRes.find((r2) => r2.text)
     if (pick) {
       master = pick.text!
@@ -438,6 +447,17 @@ async function downloadFromMaster(
 /** ✅ ĐƯỜNG CHÍNH: bản thu cho người xem nằm trong "PNG" tiktokcdn —
  *  mỗi segment = 58-62 byte PNG shell + TS thật nối sau IEND. Cả chuỗi fetch được native:
  *  /e|/embed/<code> → links.hls4 (recordplay/playrecord /stream/) → master → variant → index → tiktok PNG. */
+/** HLS query mangled: m3u8?=tok&=ts&e=f&srv=i → chèn lại tên key t,s,e,f,i theo vị trí. */
+export function fixHls2Query(u: string): string {
+  const i = u.indexOf('.m3u8?')
+  if (i < 0) return u
+  const base = u.slice(0, i + 5)
+  const pairs = u.slice(i + 5).split('&').map(kv => kv.replace(/^\?=/, '='))
+  const keyByIdx: Record<number, string> = { 0: 't', 1: 's', 2: 'e', 3: 'f', 5: 'i' }
+  const fixed = pairs.map((kv, idx) => (kv.startsWith('=') ? keyByIdx[idx] + kv : kv)).join('&')
+  return `${base}?${fixed}`
+}
+
 async function downloadNative(embedUrls: string[], destPath: string, opts: DlOpts): Promise<boolean> {
   const log = opts.log || (() => {})
   const fileLog = opts.fileLog || (() => {})
@@ -447,6 +467,17 @@ async function downloadNative(embedUrls: string[], destPath: string, opts: DlOpt
     if (!cache.has(eu)) cache.set(eu, await resolveLinks(eu, log))
     return cache.get(eu) || null
   }
+  // token hls2 dummy "dm-dk/dp-do" (server trả giả ngẫu nhiên ~50%) → refetch /e/ tới khi được token thật
+  const getLinksRealTok = async (eu: string) => {
+    for (let i = 0; i < 5; i++) {
+      const res = await getLinks(eu)
+      const tok = res?.links.hls2 ? new URL(res.links.hls2).search.split('&')[0].replace(/^\??=/, '') : ''
+      if (!res || !res.links.hls2 || tok.length >= 20) return res
+      cache.delete(eu)
+      fileLog(`   ! token hls2 dummy (${tok.slice(0, 14)}) → refetch /e/ (${i + 1}/5)`)
+    }
+    return null
+  }
   // chuỗi nguồn: hls4 (segment "PNG" tiktok → strip shell) → hls3 (mirror .txt, TS thật đuôi .woff2) → hls2
   const sources: { key: 'hls4' | 'hls3' | 'hls2'; label: string; transform?: (b: Buffer) => Buffer }[] = [
     { key: 'hls4', label: 'hls4', transform: stripPngPayload },
@@ -454,14 +485,19 @@ async function downloadNative(embedUrls: string[], destPath: string, opts: DlOpt
     { key: 'hls2', label: 'hls2' },
   ]
   for (const s of sources) {
-    for (const eu of embedUrls) {
-      const res = await getLinks(eu)
-      if (!res || !res.links[s.key]) continue // nguồn không tồn tại với code này → code kế
-      const raw = res.links[s.key]!
-      const fixed = raw.startsWith('http') ? raw : res.base + raw
-      if (await downloadFromMaster(fixed, destPath, opts, s.label, s.transform)) return true
-      log(`  ! ${s.label} chết`)
-      fileLog(`${s.label} (code ${eu.slice(-14)}) chết → nguồn kế`)
+    // pass 0: cache; pass 1: refetch /e/ thay token/signed (hls4 403 vì token chết hồi sinh — quan sát thực tế)
+    for (let pass = 0; pass < 2; pass++) {
+      if (pass === 1) for (const eu of embedUrls) cache.delete(eu)
+      for (const eu of embedUrls) {
+        const res = s.key === 'hls2' ? await getLinksRealTok(eu) : await getLinks(eu)
+        if (!res || !res.links[s.key]) continue // nguồn không tồn tại với code này → code kế
+        const raw = res.links[s.key]!
+        const fixed0 = raw.startsWith('http') ? raw : res.base + raw
+        const fixed = s.key === 'hls2' ? fixHls2Query(fixed0) : fixed0
+        if (await downloadFromMaster(fixed, destPath, opts, s.label, s.transform)) return true
+        log(`  ! ${s.label} chết`)
+        fileLog(`${s.label} (code ${eu.slice(-14)}) chết${pass ? ' (sau refetch)' : ''} → nguồn kế`)
+      }
     }
   }
   fileLog('hết đường: cả hls4/hls3/hls2 đều chết')

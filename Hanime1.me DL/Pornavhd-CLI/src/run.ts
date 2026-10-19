@@ -69,8 +69,14 @@ async function downloadOne(
   }
   const st = await stat(dest).catch(() => null)
   if (st && st.size >= 1024 * 1024) {
-    end('skip', 'đã có file')
-    return rowKind
+    if (flags.redo) {
+      // --redo: xoá file + .tmp variant cũ để tải lại thật (file-exist check không nuốt --redo)
+      await unlinkAny(dest)
+      await (import('node:fs')).then((f) => f.rmSync(`${dirname(dest)}/.tmp-${sanitize(v.title)}`, { recursive: true, force: true }))
+    } else {
+      end('skip', 'đã có file')
+      return rowKind
+    }
   }
   // archive chống tải lại
   const arch = join(outDir, '.pornavhd-archive')
@@ -203,8 +209,12 @@ export async function runCli(argv: string[]): Promise<number> {
       // file fail để chạy lại: pornavhd --batch pornavhd-failed.txt
       if (failedUrls.length) {
         const ffail = join(job.outDir, 'pornavhd-failed.txt')
-        appendFileSync(ffail, [...new Set(failedUrls)].join('\n') + '\n')
-        console.log(`\n${new Set(failedUrls).size} video lỗi → ghi vào ${ffail} (chạy lại: pornavhd --batch pornavhd-failed.txt)`)
+        // merge với nội dung cũ → không dồn chồng sau mỗi run; URL story mới dòng trước
+        let prev: string[] = []
+        try { prev = readFileSync(ffail, 'utf8').split(/\r?\n/).filter((u) => u.startsWith('http')) } catch {}
+        const failSet = new Set([...failedUrls, ...prev])
+        appendFileSync(ffail, [...failSet].join('\n') + '\n')
+        console.log(`\n${failSet.size} video lỗi → ghi vào ${ffail} (chạy lại: pornavhd --batch pornavhd-failed.txt)`)
       }
       // summary bảng
       console.log('\n== TỔNG KẾT ==')

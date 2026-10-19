@@ -198,21 +198,23 @@ export class Browser {
   }
 
   private async ensureAttach(targetId: string): Promise<string | null> {
-    let sid = this.sessions.get(targetId)
-    if (sid) return sid
-    try {
-      const res = await this.cdp.send('Target.attachToTarget', { targetId, flatten: true })
-      sid = res.sessionId
-      this.sessions.set(targetId, sid)
-      for (const m of ['Page.enable', 'Runtime.enable', 'Network.enable']) {
-        this.cdp.send(m, {}, sid).catch(() => {})
+    for (let tryN = 0; tryN < 2; tryN++) { // lần 1 có thể thua race targetInfo' lụi giữa chừng — thử lại 200ms sau
+      try {
+        const res = await this.cdp.send('Target.attachToTarget', { targetId, flatten: true })
+        if (res?.sessionId) {
+          this.sessions.set(targetId, res.sessionId)
+          for (const m of ['Page.enable', 'Runtime.enable', 'Network.enable']) {
+            this.cdp.send(m, {}, res.sessionId).catch(() => {})
+          }
+          return res.sessionId
+        }
+      } catch {
+        // target phát/lụi giữa chừng (common với iframe quảng cáo) — bỏ session cache
+        this.sessions.delete(targetId)
       }
-      return sid
-    } catch {
-      // target phát/lụi giữa chừng (common với iframe quảng cáo) — bỏ session cache
-      this.sessions.delete(targetId)
-      return null
+      if (tryN === 0) await new Promise((r) => setTimeout(r, 200))
     }
+    return null
   }
 
   targetUrl(tid: string): string {
@@ -221,11 +223,7 @@ export class Browser {
 
   frameSessions(): [string, string][] {
     const out: [string, string][] = []
-    for (const [tid, sid] of this.sessions) {
-      const ti = this.targetUrls.get(tid)
-      if (ti && !this.ownTargets.has(tid) === false) {} // page/iframe đều hợp lệ
-      out.push([tid, sid])
-    }
+    for (const [tid, sid] of this.sessions) out.push([tid, sid]) // page/iframe đều hợp lệ
     return out
   }
 
@@ -307,6 +305,7 @@ export class Browser {
     const targetId = res.targetId
     this.ownTargets.add(targetId)
     const sessionId = await this.ensureAttach(targetId)
+    if (!sessionId) throw new Error('không attach được target mới trong browser')
     const page = new Page(this, targetId, sessionId)
     this.pages.set(targetId, page)
     if (startUrl) await page.goto(startUrl)

@@ -121,10 +121,14 @@ export class MultiProgress {
     }
   }
 
-  /** in 1 dòng log: đè spaces lên dòng trạng thái → in log → vẽ lại trạng thái */
+  private width(): number {
+    return Math.max(40, (process.stdout && process.stdout.columns) || 100)
+  }
+
+  /** in 1 dòng log: đè spaces lên dòng trạng thái → in log (clip ≤ columns, wrap hỏng \r) → vẽ lại */
   log(line: string): void {
     this.clearStatus()
-    process.stdout.write(`\r${line}\n`)
+    process.stdout.write(`\r${fitLabel(line, this.width())}\n`)
     this.writeStatus()
   }
 
@@ -134,7 +138,7 @@ export class MultiProgress {
     const tag = info.end === 'ok' ? '[ok]  ' : info.end === 'skip' ? '[skip]' : '[FAIL]'
     const time = info.secs ? ` ${info.secs}s` : ''
     const size = info.mb ? ` ${info.mb}` : ''
-    process.stdout.write(`\r${tag} ${s.label}${size}${time} ${info.msg}\n`)
+    process.stdout.write(`\r${fitLabel(`${tag} ${s.label}${size}${time} ${info.msg}`, this.width())}\n`)
     s.held = true
     this.writeStatus()
   }
@@ -143,7 +147,7 @@ export class MultiProgress {
   private statusLine(): string {
     const act = this.slots.filter((s) => !s.held)
     if (!act.length) return ''
-    const W = Math.max(40, (process.stdout && process.stdout.columns) || 100)
+    const W = this.width()
     const budget = Math.max(14, Math.floor((W - (act.length - 1) * 3) / act.length))
     return act.map((s, i) => slotFragment(s, budget, act.length > 1 ? i : -1)).join(' | ')
   }
