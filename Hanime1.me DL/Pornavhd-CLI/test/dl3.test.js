@@ -38,6 +38,45 @@ test('MultiProgress không-ANSI: 1 dòng status, slot tái dùng khi retry', () 
   assert.strictEqual(mp['statusLine'](), '')
 })
 
+test('fitLabel: giữ đầu+đuôi, ≤ max', () => {
+  const { fitLabel } = require('../dist/index.cjs')
+  const out = fitLabel('yurinslittlepeach_123.mp4', 20)
+  assert.ok(out.length <= 20)
+  assert.ok(out.includes('…'))
+  assert.ok(out.startsWith('yurins'))
+  assert.strictEqual(fitLabel('short.mp4', 20), 'short.mp4')
+})
+
+test('slotFragment rút gọn dần khi max nhỏ: vẫn giữ %, không vượt max', () => {
+  const { slotFragment } = require('../dist/index.cjs')
+  const s = { label: 'yurinslittlepeach_123.mp4', done: 159, total: 181, bytes: 10485760, t0: Date.now() - 20_000, started: true }
+  const f = slotFragment(s, 16)
+  assert.ok(f.length <= 16)
+  assert.ok(f.includes('%'))
+})
+
+test('statusLine bất biến 1 dòng: 3 slot label dài, stdout 80 cột →总 ≤ 80', () => {
+  const { MultiProgress } = require('../dist/index.cjs')
+  const mp = new MultiProgress()
+  const s1 = mp.createSlot('yurinslittlepeach_123.mp4 [brightcove]')
+  const s2 = mp.createSlot('yurinslittlepeach_456.mp4 [brightcove]')
+  const s3 = mp.createSlot('yurinslittlepeach_789.mp4 [brightcove]')
+  mp.update(s1, 159, 181, 10485760)
+  mp.update(s2, 132, 190, 115343360)
+  mp.update(s3, 50, 90, 5242880)
+  // ép 80 cột
+  Object.defineProperty(process.stdout, 'columns', { value: 80, configurable: true })
+  try {
+    const line = mp['statusLine']()
+    assert.ok(line.length <= 80, `dòng ${line.length} > 80: ${line}`)
+    assert.ok(line.includes('|'))
+    const line2 = mp['statusLine']()
+    assert.strictEqual(line2, line) // cập nhật cùng trạng thái vẽ ổn định
+  } finally {
+    delete process.stdout['columns']
+  }
+})
+
 test('slotFragment: khởi động + pct + speed', () => {
   const s = { label: 'x.mp4', done: 0, total: 0, bytes: 0, t0: Date.now(), started: false }
   assert.ok(slotFragment(s).includes('khởi động'))

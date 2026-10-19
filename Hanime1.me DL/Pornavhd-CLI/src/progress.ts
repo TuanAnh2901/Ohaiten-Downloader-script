@@ -25,14 +25,32 @@ export function formatEta(sec: number): string {
   return h ? `${h}:${p(m)}:${p(s)}` : `${p(m)}:${p(s)}`
 }
 
-/** 1 mini-slot: `a.mp4 45.2% 85/188 1.2MB/s 01:23` hoặc `a.mp4 khởi động...` */
-export function slotFragment(s: { label: string; done: number; total: number; bytes: number; t0: number; started: boolean }): string {
-  if (!s.started) return `${s.label.slice(0, 18)} khởi động...`
+/** Rút gọn label giữ ĐẦU + ĐUÔI (số video nằm ở đuôi: `yurins…h_123.mp4`) */
+export function fitLabel(label: string, max: number): string {
+  if (label.length <= max) return label
+  if (max <= 1) return label.slice(0, max)
+  const head = Math.ceil((max - 1) / 2)
+  const tail = max - 1 - head
+  return label.slice(0, head) + '…' + label.slice(label.length - tail)
+}
+
+/** 1 mini-slot gọn trong `max` ký tự — rút dần: số segment → tốc độ → ETA, label giữ đầu+đuôi.
+ *  Format đầy đủ: `a.mp4 45.2% 85/188 1.2MB/s 01:23`; đang khởi động: `a.mp4 khởi động...` */
+export function slotFragment(s: { label: string; done: number; total: number; bytes: number; t0: number; started: boolean }, max = 40, idx = -1): string {
+  const pre = idx >= 0 && max > 12 ? `#${idx + 1} ` : ''
+  const lab = fitLabel(s.label, Math.max(6, max - 20 - pre.length))
+  if (!s.started) return fitLabel(`${pre}${lab} khởi động...`, max)
   const el = (Date.now() - s.t0) / 1000
   const pct = s.total ? ((s.done * 100) / s.total).toFixed(1) : '0'
   const speed = el > 1 ? formatSpeed(s.bytes / el) : '?'
   const eta = s.total && s.done > 0 && el > 1 ? formatEta(((s.total - s.done) / s.done) * el) : '?'
-  return `${s.label.slice(0, 18)} ${pct}% ${s.done}/${s.total} ${speed} ${eta}`
+  const full = `${pre}${lab} ${pct}% ${s.done}/${s.total} ${speed} ${eta}`
+  if (full.length <= max) return full
+  const noCount = `${pre}${lab} ${pct}% ${speed} ${eta}`
+  if (noCount.length <= max) return noCount
+  const noSpeed = `${pre}${lab} ${pct}% ${eta}`
+  if (noSpeed.length <= max) return noSpeed
+  return fitLabel(`${pre}${lab} ${pct}%`, max)
 }
 
 /** [legacy] 1 hàng bar đầy đủ (không dùng trong UI mới nhưng giữ cho test/compat) */
@@ -121,8 +139,13 @@ export class MultiProgress {
     this.writeStatus()
   }
 
+  /** MỘT dòng ≤ stdout.columns — tuyệt đối không wrap (wrap = `\r` hỏng + spam hạng rác) */
   private statusLine(): string {
-    return this.slots.filter((s) => !s.held).map(slotFragment).join('  |  ')
+    const act = this.slots.filter((s) => !s.held)
+    if (!act.length) return ''
+    const W = Math.max(40, (process.stdout && process.stdout.columns) || 100)
+    const budget = Math.max(14, Math.floor((W - (act.length - 1) * 3) / act.length))
+    return act.map((s, i) => slotFragment(s, budget, act.length > 1 ? i : -1)).join(' | ')
   }
 
   private writeStatus(): void {
