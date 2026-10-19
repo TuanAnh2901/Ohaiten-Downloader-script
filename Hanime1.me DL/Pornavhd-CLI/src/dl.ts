@@ -64,7 +64,7 @@ export function chooseVariant(vs: HlsVariant[], res?: number): HlsVariant | null
 const CF_BANNED = new Set<string>()
 
 function fetchText(url: string): Promise<string> {
-  return fetch(url, { headers: DL_HEADERS }).then(async (r) => {
+  return fetch(url, { headers: DL_HEADERS, signal: AbortSignal.timeout(15_000) }).then(async (r) => {
     if (!r.ok) {
       if (r.status === 403) {
         const body = await r.text().catch(() => '')
@@ -315,7 +315,7 @@ export async function downloadVideo(
     if (Date.now() - start > 45_000 && html.length < 100) {
       throw new Error('trang không load được (network hay chặn?)')
     }
-    if (!embedUrls.length && !links2) await new Promise((r2) => setTimeout(r2, 1000))
+    if (!embedUrls.length && !links2) await new Promise((r2) => setTimeout(r2, 500))
   }
 
   const nat = embedUrls.length ? await downloadNative(embedUrls, destPath, opts) : false
@@ -367,24 +367,34 @@ async function downloadFromMaster(
       if (!candidates.includes(c) && !isBanned(c)) candidates.push(c)
     }
   }
-  outer: for (const cu of candidates) {
-    if (isBanned(cu)) { log(`  ! skip host CF chặn: ${new URL(cu).hostname}`); continue }
-    const tries = cu === candidates[0] ? 2 : 1
-    for (let attempt = 0; attempt < tries; attempt++) {
-      try {
-        master = await fetchText(cu)
-        masterErr = ''
-        masterUrl = cu
-        fileLog(`master OK qua ${cu}`)
-        break outer
-      } catch (e: any) {
-        masterErr = String(e.message)
-        fileLog(`   ! candidate fail: ${e.cause?.code || e.cause?.message || e.message} :: ${cu.slice(24, 110)}`)
-        if (attempt < tries - 1) await new Promise((r) => setTimeout(r, 2000))
+  // RACE: dò song song toàn bộ candidate (thay vì tuần tự — DNS chết từng cái mất 2-4s → 2 phút tổng).
+  // Chọn kết quả 200 OK Ưu tiên theo thứ tự; pass 2 chỉ thử các lỗi tạm thời (không phải 404), đã lọc ban.
+  type RaceRes = { url: string; text?: string; err?: string }
+  const race = async (pool: string[]): Promise<RaceRes[]> =>
+    Promise.all(pool.map(async (u): Promise<RaceRes> => {
+      try { return { url: u, text: await fetchText(u) } } catch (e: any) {
+        const err = String(e.cause?.code || e.cause?.message || e.message)
+        fileLog(`   ! candidate fail: ${err} :: ${u.slice(24, 110)}`)
+        return { url: u, err }
       }
+    }))
+  let pool = candidates
+  let raceRes: RaceRes[] = []
+  for (let pass = 0; pass < 2 && pool.length; pass++) {
+    raceRes = await race(pool)
+    const pick = raceRes.find((r2) => r2.text)
+    if (pick) {
+      master = pick.text!
+      masterUrl = pick.url
+      fileLog(`master OK qua ${pick.url}`)
     }
+    pool = pass === 0 && !raceRes.find((r2) => r2.text)
+      ? raceRes.filter((r2) => r2.err && !r2.err.includes('404') && !isBanned(r2.url)).map((r2) => r2.url)
+      : []
+    if (pool.length === raceRes.length && pass === 0) await new Promise((r) => setTimeout(r, 2000))
   }
-  if (masterErr) {
+  if (!master) {
+    masterErr = raceRes.find((r2) => r2.err)?.err || 'fetch failed'
     log(`  ! ${sourceLabel} master: ${masterErr.slice(0, 140)}`)
     fileLog(`${sourceLabel} master fail (tất cả candidate domain): ${masterErr}`)
     return false
@@ -431,6 +441,12 @@ async function downloadFromMaster(
 async function downloadNative(embedUrls: string[], destPath: string, opts: DlOpts): Promise<boolean> {
   const log = opts.log || (() => {})
   const fileLog = opts.fileLog || (() => {})
+  // cache 1 fetch /e/ mỗi code — trước đây hls4/hls3/hls2 mỗi nguồn fetch lại trang (3× chậm)
+  const cache = new Map<string, Awaited<ReturnType<typeof resolveLinks>>>()
+  const getLinks = async (eu: string) => {
+    if (!cache.has(eu)) cache.set(eu, await resolveLinks(eu, log))
+    return cache.get(eu) || null
+  }
   // chuỗi nguồn: hls4 (segment "PNG" tiktok → strip shell) → hls3 (mirror .txt, TS thật đuôi .woff2) → hls2
   const sources: { key: 'hls4' | 'hls3' | 'hls2'; label: string; transform?: (b: Buffer) => Buffer }[] = [
     { key: 'hls4', label: 'hls4', transform: stripPngPayload },
@@ -439,7 +455,7 @@ async function downloadNative(embedUrls: string[], destPath: string, opts: DlOpt
   ]
   for (const s of sources) {
     for (const eu of embedUrls) {
-      const res = await resolveLinks(eu, log)
+      const res = await getLinks(eu)
       if (!res || !res.links[s.key]) continue // nguồn không tồn tại với code này → code kế
       const raw = res.links[s.key]!
       const fixed = raw.startsWith('http') ? raw : res.base + raw

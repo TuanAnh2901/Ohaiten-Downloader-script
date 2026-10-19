@@ -81,7 +81,8 @@ async function downloadOne(
   }
 
   const t0 = Date.now()
-  const fileLog = (s: string) => logger.log(fname, s)
+  // mốc [s] từ start job — đo pha fetching vs tải
+  const fileLog = (s: string) => logger.log(fname, `[+${((Date.now() - t0) / 1000).toFixed(1)}s] ${s}`)
   const page = await browser.newPage('about:blank')
   try {
     const ok = await downloadVideo(page, v.url, dest, {
@@ -139,10 +140,16 @@ async function unlinkAny(p: string) {
 
 export async function runCli(argv: string[]): Promise<number> {
   const flags = parseArgs(argv)
-  // 1 listing browser dùng chung cho mọi target (fetch list qua browser)
-  const listingBrowser = await Browser.launch(join(EXE_DIR, '.pw-profile-list'), console.log)
+  // listing browser tạo LẶT (chỉ khi cần crawl /actor/?s= — target video/batch video không cần)
+  let listingBrowser: Browser | null = null
+  const fetchPage = async (url: string): Promise<string> => {
+    if (!listingBrowser) listingBrowser = await Browser.launch(join(EXE_DIR, '.pw-profile-list'), console.log)
+    return fetchPageHtml(listingBrowser, url, console.log)
+  }
+  // worker-0 browser đặt sẵn SONG SONG lúc buildJobs (tiết kiệm ~3-5s spawn serial)
+  const worker0P = Browser.launch(PROFILE_DIR, console.log).catch(() => null as unknown)
   try {
-    const jobs = await buildJobs(flags, (u) => fetchPageHtml(listingBrowser, u, console.log))
+    const jobs = await buildJobs(flags, fetchPage)
     if (flags.list) {
       let n = 0
       for (const job of jobs) {
@@ -166,10 +173,12 @@ export async function runCli(argv: string[]): Promise<number> {
       // listing browser không dùng cho download → mỗi worker một browser riêng (profile -wN)
       await Promise.all(
         Array.from({ length: workers }, (_, w) => (async () => {
-          const browser = await Browser.launch(
-            workers === 1 ? PROFILE_DIR : `${PROFILE_DIR}-w${w}`,
-            console.log,
-          )
+          let browser: Browser
+          if (w === 0 && workers === 1) {
+            browser = (await worker0P) || (await Browser.launch(PROFILE_DIR, console.log))
+          } else {
+            browser = await Browser.launch(workers === 1 ? PROFILE_DIR : `${PROFILE_DIR}-w${w}`, console.log)
+          }
           try {
             while (true) {
               const i = idx.i
@@ -211,6 +220,9 @@ export async function runCli(argv: string[]): Promise<number> {
     }
     return 0
   } finally {
-    await listingBrowser.close().catch(() => {})
+    await listingBrowser?.close().catch(() => {})
+    let wb = null
+    try { wb = await worker0P } catch {}
+    if (wb && wb.close) await wb.close().catch(() => {})
   }
 }
